@@ -574,16 +574,41 @@ ON CONFLICT (event_id) DO NOTHING;
         end_date: Optional[datetime] = None,
         output_file: str = None,
     ):
-        """Generate complete migration SQL."""
+        """Generate complete migration SQL.
+
+        Uses streaming output to minimize memory usage for large migrations.
+        SQL is written directly to the output as it's generated.
+        """
         # Count totals for progress bar
+        logger.info("Counting records to migrate...")
         session_count = self.count_sessions(start_date, end_date)
         event_count = self.count_events(start_date, end_date)
 
-        # Open output file if specified
-        out = open(output_file, 'w') if output_file else sys.stdout
+        logger.info(f"Will migrate {session_count:,} sessions and {event_count:,} events")
+
+        if session_count == 0 and event_count == 0:
+            logger.warning("No data to migrate for the specified criteria")
+            return
+
+        # Open output file if specified (with explicit buffering for large files)
+        if output_file:
+            out = open(output_file, 'w', buffering=1024*1024)  # 1MB buffer
+            logger.info(f"Writing output to: {output_file}")
+        else:
+            out = sys.stdout
+
+        batches_written = 0
 
         def write(line):
             out.write(line + "\n")
+
+        def flush_periodically():
+            """Flush output periodically to ensure data is written."""
+            nonlocal batches_written
+            batches_written += 1
+            # Flush every 100 batches for large files
+            if output_file and batches_written % 100 == 0:
+                out.flush()
 
         try:
             with Progress(
@@ -592,10 +617,13 @@ ON CONFLICT (event_id) DO NOTHING;
                 BarColumn(),
                 MofNCompleteColumn(),
                 TimeElapsedColumn(),
+                console=console,
             ) as progress:
                 # Write header
                 write("-- Matomo to Umami Migration SQL")
                 write(f"-- Generated at: {datetime.now().isoformat()}")
+                write(f"-- Sessions: {session_count:,}")
+                write(f"-- Events: {event_count:,}")
                 if start_date:
                     write(f"-- Start date: {start_date.isoformat()}")
                 if end_date:
@@ -605,19 +633,28 @@ ON CONFLICT (event_id) DO NOTHING;
                 write("")
 
                 # Sessions
+                logger.debug("Generating session SQL...")
                 session_task = progress.add_task("Sessions", total=session_count)
                 for line in self.generate_sessions_sql(start_date, end_date, progress, session_task):
                     write(line)
+                    flush_periodically()
 
                 write("")
 
                 # Events
+                logger.debug("Generating event SQL...")
                 event_task = progress.add_task("Events", total=event_count)
                 for line in self.generate_events_sql(start_date, end_date, progress, event_task):
                     write(line)
+                    flush_periodically()
 
                 write("")
                 write("COMMIT;")
+
+            # Final flush
+            if output_file:
+                out.flush()
+                logger.info(f"Migration SQL written to {output_file}")
         finally:
             if output_file:
                 out.close()
