@@ -1,15 +1,12 @@
 """Field mappings between Matomo and Umami schemas."""
 
-from dataclasses import dataclass
-from typing import Optional
-from urllib.parse import urlparse
-import hashlib
 import uuid
-
+from dataclasses import dataclass
+from urllib.parse import urlparse
 
 # Matomo URL prefix mapping
 URL_PREFIXES = {
-    0: "",        # Legacy - domain included in name, no protocol
+    0: "",  # Legacy - domain included in name, no protocol
     1: "http://",
     2: "https://",
     3: "https://www.",
@@ -35,7 +32,7 @@ ACTION_TYPE_CONTENT_INTERACTION = 16
 # Matomo device type mapping
 DEVICE_TYPES = {
     0: "desktop",
-    1: "smartphone", 
+    1: "smartphone",
     2: "tablet",
     3: "feature phone",
     4: "console",
@@ -157,6 +154,7 @@ OS_MAPPING = {
 @dataclass
 class SiteMapping:
     """Maps a Matomo site to an Umami website."""
+
     matomo_idsite: int
     umami_website_id: str
     domain: str
@@ -164,7 +162,7 @@ class SiteMapping:
 
 def generate_uuid_from_matomo_id(matomo_id: int, prefix: str) -> str:
     """Generate a deterministic UUID from a Matomo integer ID.
-    
+
     Uses UUID v5 with a namespace to ensure consistent mapping.
     """
     namespace = uuid.UUID("6ba7b810-9dad-11d1-80b4-00c04fd430c8")  # URL namespace
@@ -172,7 +170,7 @@ def generate_uuid_from_matomo_id(matomo_id: int, prefix: str) -> str:
     return str(uuid.uuid5(namespace, name))
 
 
-def parse_matomo_url(name: str, url_prefix: Optional[int]) -> tuple[str, str, Optional[str]]:
+def parse_matomo_url(name: str, url_prefix: int | None) -> tuple[str, str, str | None]:
     """Parse Matomo URL into hostname, path, and query string.
 
     Returns (hostname, path, query) tuple.
@@ -197,7 +195,9 @@ def parse_matomo_url(name: str, url_prefix: Optional[int]) -> tuple[str, str, Op
     return hostname, path, query
 
 
-def parse_referrer_url(referer_url: Optional[str]) -> tuple[Optional[str], Optional[str], Optional[str]]:
+def parse_referrer_url(
+    referer_url: str | None,
+) -> tuple[str | None, str | None, str | None]:
     """Parse referrer URL into domain, path, and query string.
 
     Returns (referrer_domain, referrer_path, referrer_query) tuple.
@@ -217,28 +217,28 @@ def parse_referrer_url(referer_url: Optional[str]) -> tuple[Optional[str], Optio
     return domain, path, query
 
 
-def map_browser(matomo_code: Optional[str]) -> Optional[str]:
+def map_browser(matomo_code: str | None) -> str | None:
     """Map Matomo browser code to Umami browser name."""
     if not matomo_code:
         return None
     return BROWSER_MAPPING.get(matomo_code, matomo_code.lower())
 
 
-def map_os(matomo_code: Optional[str]) -> Optional[str]:
+def map_os(matomo_code: str | None) -> str | None:
     """Map Matomo OS code to Umami OS name."""
     if not matomo_code:
         return None
     return OS_MAPPING.get(matomo_code, matomo_code.lower())
 
 
-def map_device_type(matomo_type: Optional[int]) -> Optional[str]:
+def map_device_type(matomo_type: int | None) -> str | None:
     """Map Matomo device type to Umami device name."""
     if matomo_type is None:
         return None
     return DEVICE_TYPES.get(matomo_type, "desktop")
 
 
-def truncate_field(value: Optional[str], max_length: int) -> Optional[str]:
+def truncate_field(value: str | None, max_length: int) -> str | None:
     """Truncate a field to max length for Umami schema compatibility."""
     if value is None:
         return None

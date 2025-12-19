@@ -4,22 +4,31 @@ import argparse
 import logging
 import re
 import sys
+from collections.abc import Generator
 from datetime import datetime
-from typing import Generator, Optional
+
 import mysql.connector
 from mysql.connector import Error as MySQLError
 from rich.console import Console
 from rich.logging import RichHandler
-from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn, TimeElapsedColumn, MofNCompleteColumn
+from rich.progress import (
+    BarColumn,
+    MofNCompleteColumn,
+    Progress,
+    SpinnerColumn,
+    TextColumn,
+    TimeElapsedColumn,
+)
 from rich.table import Table
+
 from .mappings import (
     SiteMapping,
     generate_uuid_from_matomo_id,
+    map_browser,
+    map_device_type,
+    map_os,
     parse_matomo_url,
     parse_referrer_url,
-    map_browser,
-    map_os,
-    map_device_type,
     truncate_field,
 )
 
@@ -43,22 +52,25 @@ def setup_logging(verbosity: int = 0) -> None:
         level=level,
         format="%(message)s",
         datefmt="[%X]",
-        handlers=[RichHandler(console=console, rich_tracebacks=True, show_path=False)]
+        handlers=[RichHandler(console=console, rich_tracebacks=True, show_path=False)],
     )
 
 
 class MigrationError(Exception):
     """Base exception for migration errors."""
+
     pass
 
 
 class DatabaseConnectionError(MigrationError):
     """Raised when database connection fails."""
+
     pass
 
 
 class SiteMappingError(MigrationError):
     """Raised when site mapping parsing fails."""
+
     pass
 
 
@@ -101,8 +113,7 @@ def validate_site_mapping(mapping_str: str) -> SiteMapping:
 
     # Validate UUID format
     uuid_pattern = re.compile(
-        r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',
-        re.IGNORECASE
+        r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.IGNORECASE
     )
     if not uuid_pattern.match(umami_uuid):
         raise SiteMappingError(
@@ -111,7 +122,7 @@ def validate_site_mapping(mapping_str: str) -> SiteMapping:
         )
 
     # Validate domain
-    if not domain or domain.startswith('.') or ' ' in domain:
+    if not domain or domain.startswith(".") or " " in domain:
         raise SiteMappingError(
             f"Invalid domain: '{domain}'\n"
             f"Domain should be a valid hostname (e.g., example.com)"
@@ -124,7 +135,7 @@ def validate_site_mapping(mapping_str: str) -> SiteMapping:
     )
 
 
-def escape_sql_string(value: Optional[str], max_length: Optional[int] = None) -> str:
+def escape_sql_string(value: str | None, max_length: int | None = None) -> str:
     """Escape a string for SQL insertion.
 
     If max_length is provided, truncates BEFORE escaping to ensure
@@ -140,7 +151,7 @@ def escape_sql_string(value: Optional[str], max_length: Optional[int] = None) ->
     return f"'{escaped}'"
 
 
-def format_timestamp(dt: Optional[datetime]) -> str:
+def format_timestamp(dt: datetime | None) -> str:
     """Format datetime for PostgreSQL."""
     if dt is None:
         return "NULL"
@@ -149,7 +160,7 @@ def format_timestamp(dt: Optional[datetime]) -> str:
 
 class MatomoToUmamiMigrator:
     """Handles migration from Matomo to Umami."""
-    
+
     def __init__(
         self,
         mysql_host: str = "localhost",
@@ -170,20 +181,22 @@ class MatomoToUmamiMigrator:
         self.site_mappings = site_mappings or []
         self.batch_size = batch_size
         self._site_map = {m.matomo_idsite: m for m in self.site_mappings}
-    
+
     def connect(self):
         """Connect to Matomo MySQL database.
 
         Raises:
             DatabaseConnectionError: If connection fails
         """
-        logger.info(f"Connecting to MySQL at {self.mysql_config['host']}:{self.mysql_config['port']}")
+        logger.info(
+            f"Connecting to MySQL at {self.mysql_config['host']}:{self.mysql_config['port']}"
+        )
         try:
             self.conn = mysql.connector.connect(**self.mysql_config)
             self.cursor = self.conn.cursor(dictionary=True)
             logger.info("Successfully connected to MySQL database")
         except MySQLError as e:
-            error_code = e.errno if hasattr(e, 'errno') else 'unknown'
+            error_code = e.errno if hasattr(e, "errno") else "unknown"
             if error_code == 1045:  # Access denied
                 raise DatabaseConnectionError(
                     f"Access denied for user '{self.mysql_config['user']}'\n"
@@ -201,18 +214,16 @@ class MatomoToUmamiMigrator:
                     f"Please check your database name."
                 ) from e
             else:
-                raise DatabaseConnectionError(
-                    f"Failed to connect to MySQL: {e}"
-                ) from e
-    
+                raise DatabaseConnectionError(f"Failed to connect to MySQL: {e}") from e
+
     def close(self):
         """Close database connection."""
-        if hasattr(self, 'cursor'):
+        if hasattr(self, "cursor"):
             self.cursor.close()
-        if hasattr(self, 'conn'):
+        if hasattr(self, "conn"):
             self.conn.close()
-    
-    def get_site_mapping(self, idsite: int) -> Optional[SiteMapping]:
+
+    def get_site_mapping(self, idsite: int) -> SiteMapping | None:
         """Get Umami website ID for a Matomo site ID."""
         return self._site_map.get(idsite)
 
@@ -255,7 +266,7 @@ class MatomoToUmamiMigrator:
         where_sql, params = self._build_session_where(start_date, end_date)
         query = f"SELECT COUNT(*) as cnt FROM piwik_log_visit v WHERE {where_sql}"
         self.cursor.execute(query, params)
-        count = self.cursor.fetchone()['cnt']
+        count = self.cursor.fetchone()["cnt"]
         logger.debug(f"Found {count:,} sessions to migrate")
         return count
 
@@ -268,7 +279,7 @@ class MatomoToUmamiMigrator:
             WHERE {where_sql} AND lva.idaction_url IS NOT NULL
         """
         self.cursor.execute(query, params)
-        count = self.cursor.fetchone()['cnt']
+        count = self.cursor.fetchone()["cnt"]
         logger.debug(f"Found {count:,} events to migrate")
         return count
 
@@ -285,8 +296,8 @@ class MatomoToUmamiMigrator:
         self.cursor.execute(query, params)
         result = self.cursor.fetchone()
         return {
-            'min_date': result['min_date'],
-            'max_date': result['max_date'],
+            "min_date": result["min_date"],
+            "max_date": result["max_date"],
         }
 
     def get_summary(self, start_date=None, end_date=None) -> dict:
@@ -308,7 +319,7 @@ class MatomoToUmamiMigrator:
                 WHERE {where_sql} AND v.idsite = %s
             """
             self.cursor.execute(query, params + [mapping.matomo_idsite])
-            site_sessions = self.cursor.fetchone()['cnt']
+            site_sessions = self.cursor.fetchone()["cnt"]
 
             where_sql, params = self._build_event_where(start_date, end_date)
             query = f"""
@@ -316,21 +327,23 @@ class MatomoToUmamiMigrator:
                 WHERE {where_sql} AND lva.idsite = %s AND lva.idaction_url IS NOT NULL
             """
             self.cursor.execute(query, params + [mapping.matomo_idsite])
-            site_events = self.cursor.fetchone()['cnt']
+            site_events = self.cursor.fetchone()["cnt"]
 
-            site_breakdown.append({
-                'matomo_id': mapping.matomo_idsite,
-                'umami_id': mapping.umami_website_id,
-                'domain': mapping.domain,
-                'sessions': site_sessions,
-                'events': site_events,
-            })
+            site_breakdown.append(
+                {
+                    "matomo_id": mapping.matomo_idsite,
+                    "umami_id": mapping.umami_website_id,
+                    "domain": mapping.domain,
+                    "sessions": site_sessions,
+                    "events": site_events,
+                }
+            )
 
         return {
-            'session_count': session_count,
-            'event_count': event_count,
-            'date_range': date_range,
-            'sites': site_breakdown,
+            "session_count": session_count,
+            "event_count": event_count,
+            "date_range": date_range,
+            "sites": site_breakdown,
         }
 
     def print_summary(self, start_date=None, end_date=None) -> dict:
@@ -345,26 +358,26 @@ class MatomoToUmamiMigrator:
         table.add_row("Total Sessions", f"{summary['session_count']:,}")
         table.add_row("Total Events", f"{summary['event_count']:,}")
 
-        if summary['date_range']['min_date']:
-            table.add_row("Date Range Start", str(summary['date_range']['min_date']))
-            table.add_row("Date Range End", str(summary['date_range']['max_date']))
+        if summary["date_range"]["min_date"]:
+            table.add_row("Date Range Start", str(summary["date_range"]["min_date"]))
+            table.add_row("Date Range End", str(summary["date_range"]["max_date"]))
         else:
             table.add_row("Date Range", "No data found")
 
         console.print(table)
 
         # Site breakdown table
-        if summary['sites']:
+        if summary["sites"]:
             site_table = Table(title="Per-Site Breakdown")
             site_table.add_column("Matomo ID", style="cyan")
             site_table.add_column("Domain", style="blue")
             site_table.add_column("Sessions", style="green", justify="right")
             site_table.add_column("Events", style="green", justify="right")
 
-            for site in summary['sites']:
+            for site in summary["sites"]:
                 site_table.add_row(
-                    str(site['matomo_id']),
-                    site['domain'],
+                    str(site["matomo_id"]),
+                    site["domain"],
                     f"{site['sessions']:,}",
                     f"{site['events']:,}",
                 )
@@ -375,9 +388,9 @@ class MatomoToUmamiMigrator:
 
     def generate_sessions_sql(
         self,
-        start_date: Optional[datetime] = None,
-        end_date: Optional[datetime] = None,
-        progress: Optional[Progress] = None,
+        start_date: datetime | None = None,
+        end_date: datetime | None = None,
+        progress: Progress | None = None,
         task_id=None,
     ) -> Generator[str, None, None]:
         """Generate SQL INSERT statements for sessions."""
@@ -410,22 +423,22 @@ class MatomoToUmamiMigrator:
 
         batch = []
         for row in self.cursor:
-            mapping = self.get_site_mapping(row['idsite'])
+            mapping = self.get_site_mapping(row["idsite"])
             if not mapping:
                 continue
-            
-            session_id = generate_uuid_from_matomo_id(row['idvisit'], 'visit')
-            
+
+            session_id = generate_uuid_from_matomo_id(row["idvisit"], "visit")
+
             # Map fields
-            browser = truncate_field(map_browser(row['config_browser_name']), 20)
-            os = truncate_field(map_os(row['config_os']), 20)
-            device = truncate_field(map_device_type(row['config_device_type']), 20)
-            screen = truncate_field(row['config_resolution'], 11)
-            language = truncate_field(row['location_browser_lang'], 35)
-            country = row['location_country'][:2] if row['location_country'] else None
-            region = truncate_field(row['location_region'], 20)
-            city = truncate_field(row['location_city'], 50)
-            
+            browser = truncate_field(map_browser(row["config_browser_name"]), 20)
+            os = truncate_field(map_os(row["config_os"]), 20)
+            device = truncate_field(map_device_type(row["config_device_type"]), 20)
+            screen = truncate_field(row["config_resolution"], 11)
+            language = truncate_field(row["location_browser_lang"], 35)
+            country = row["location_country"][:2] if row["location_country"] else None
+            region = truncate_field(row["location_region"], 20)
+            city = truncate_field(row["location_city"], 50)
+
             values = (
                 f"'{session_id}'",
                 f"'{mapping.umami_website_id}'",
@@ -437,7 +450,7 @@ class MatomoToUmamiMigrator:
                 escape_sql_string(country),
                 escape_sql_string(region),
                 escape_sql_string(city),
-                format_timestamp(row['visit_first_action_time']),
+                format_timestamp(row["visit_first_action_time"]),
                 "NULL",  # distinct_id
             )
             batch.append(f"({', '.join(values)})")
@@ -456,15 +469,15 @@ class MatomoToUmamiMigrator:
         """Format a batch INSERT for sessions."""
         return f"""INSERT INTO session (session_id, website_id, browser, os, device, screen, language, country, region, city, created_at, distinct_id)
 VALUES
-{','.join(values)}
+{",".join(values)}
 ON CONFLICT (session_id) DO NOTHING;
 """
-    
+
     def generate_events_sql(
         self,
-        start_date: Optional[datetime] = None,
-        end_date: Optional[datetime] = None,
-        progress: Optional[Progress] = None,
+        start_date: datetime | None = None,
+        end_date: datetime | None = None,
+        progress: Progress | None = None,
         task_id=None,
     ) -> Generator[str, None, None]:
         """Generate SQL INSERT statements for website_event."""
@@ -493,41 +506,47 @@ ON CONFLICT (session_id) DO NOTHING;
               AND lva.idaction_url IS NOT NULL
             ORDER BY lva.idlink_va
         """
-        
+
         self.cursor.execute(query, params)
-        
+
         yield "-- Website Events (from piwik_log_link_visit_action)"
         yield "-- Maps to Umami website_event table"
         yield ""
-        
+
         batch = []
         for row in self.cursor:
-            mapping = self.get_site_mapping(row['idsite'])
+            mapping = self.get_site_mapping(row["idsite"])
             if not mapping:
                 continue
-            
-            event_id = generate_uuid_from_matomo_id(row['idlink_va'], 'action')
-            session_id = generate_uuid_from_matomo_id(row['idvisit'], 'visit')
+
+            event_id = generate_uuid_from_matomo_id(row["idlink_va"], "action")
+            session_id = generate_uuid_from_matomo_id(row["idvisit"], "visit")
             # Use pageview ID for visit_id if available, otherwise generate from action
-            if row['idpageview']:
+            if row["idpageview"]:
                 visit_id = generate_uuid_from_matomo_id(
-                    int.from_bytes(row['idpageview'].encode()[:8], 'big') if isinstance(row['idpageview'], str) else row['idpageview'],
-                    'pageview'
+                    int.from_bytes(row["idpageview"].encode()[:8], "big")
+                    if isinstance(row["idpageview"], str)
+                    else row["idpageview"],
+                    "pageview",
                 )
             else:
-                visit_id = generate_uuid_from_matomo_id(row['idlink_va'], 'pageview')
-            
+                visit_id = generate_uuid_from_matomo_id(row["idlink_va"], "pageview")
+
             # Parse URL
-            if row['url_name']:
-                hostname, url_path, url_query = parse_matomo_url(row['url_name'], row['url_prefix'])
+            if row["url_name"]:
+                hostname, url_path, url_query = parse_matomo_url(
+                    row["url_name"], row["url_prefix"]
+                )
             else:
                 hostname, url_path, url_query = mapping.domain, "/", None
 
             # Parse referrer - prefer action referrer, fall back to visit referrer
-            if row['ref_url']:
-                ref_domain, ref_path, ref_query = parse_matomo_url(row['ref_url'], row['ref_url_prefix'])
-            elif row['referer_url']:
-                ref_domain, ref_path, ref_query = parse_referrer_url(row['referer_url'])
+            if row["ref_url"]:
+                ref_domain, ref_path, ref_query = parse_matomo_url(
+                    row["ref_url"], row["ref_url_prefix"]
+                )
+            elif row["referer_url"]:
+                ref_domain, ref_path, ref_query = parse_referrer_url(row["referer_url"])
             else:
                 ref_domain, ref_path, ref_query = None, None, None
 
@@ -535,13 +554,13 @@ ON CONFLICT (session_id) DO NOTHING;
                 f"'{event_id}'",
                 f"'{mapping.umami_website_id}'",
                 f"'{session_id}'",
-                format_timestamp(row['server_time']),
+                format_timestamp(row["server_time"]),
                 escape_sql_string(url_path, 500),
                 escape_sql_string(url_query, 500),
                 escape_sql_string(ref_path, 500),
                 escape_sql_string(ref_query, 500),
                 escape_sql_string(ref_domain, 500),
-                escape_sql_string(row['page_title'], 500),
+                escape_sql_string(row["page_title"], 500),
                 "1",  # event_type = pageview
                 "NULL",  # event_name
                 f"'{visit_id}'",
@@ -564,14 +583,14 @@ ON CONFLICT (session_id) DO NOTHING;
         """Format a batch INSERT for events."""
         return f"""INSERT INTO website_event (event_id, website_id, session_id, created_at, url_path, url_query, referrer_path, referrer_query, referrer_domain, page_title, event_type, event_name, visit_id, tag, hostname)
 VALUES
-{','.join(values)}
+{",".join(values)}
 ON CONFLICT (event_id) DO NOTHING;
 """
-    
+
     def generate_migration_sql(
         self,
-        start_date: Optional[datetime] = None,
-        end_date: Optional[datetime] = None,
+        start_date: datetime | None = None,
+        end_date: datetime | None = None,
         output_file: str = None,
     ):
         """Generate complete migration SQL.
@@ -584,7 +603,9 @@ ON CONFLICT (event_id) DO NOTHING;
         session_count = self.count_sessions(start_date, end_date)
         event_count = self.count_events(start_date, end_date)
 
-        logger.info(f"Will migrate {session_count:,} sessions and {event_count:,} events")
+        logger.info(
+            f"Will migrate {session_count:,} sessions and {event_count:,} events"
+        )
 
         if session_count == 0 and event_count == 0:
             logger.warning("No data to migrate for the specified criteria")
@@ -592,7 +613,7 @@ ON CONFLICT (event_id) DO NOTHING;
 
         # Open output file if specified (with explicit buffering for large files)
         if output_file:
-            out = open(output_file, 'w', buffering=1024*1024)  # 1MB buffer
+            out = open(output_file, "w", buffering=1024 * 1024)  # 1MB buffer
             logger.info(f"Writing output to: {output_file}")
         else:
             out = sys.stdout
@@ -635,7 +656,9 @@ ON CONFLICT (event_id) DO NOTHING;
                 # Sessions
                 logger.debug("Generating session SQL...")
                 session_task = progress.add_task("Sessions", total=session_count)
-                for line in self.generate_sessions_sql(start_date, end_date, progress, session_task):
+                for line in self.generate_sessions_sql(
+                    start_date, end_date, progress, session_task
+                ):
                     write(line)
                     flush_periodically()
 
@@ -644,7 +667,9 @@ ON CONFLICT (event_id) DO NOTHING;
                 # Events
                 logger.debug("Generating event SQL...")
                 event_task = progress.add_task("Events", total=event_count)
-                for line in self.generate_events_sql(start_date, end_date, progress, event_task):
+                for line in self.generate_events_sql(
+                    start_date, end_date, progress, event_task
+                ):
                     write(line)
                     flush_periodically()
 
@@ -670,7 +695,9 @@ def main():
     parser.add_argument("--start-date", help="Start date (YYYY-MM-DD)")
     parser.add_argument("--end-date", help="End date (YYYY-MM-DD)")
     parser.add_argument("--output", "-o", help="Output file (default: stdout)")
-    parser.add_argument("--batch-size", type=int, default=1000, help="Batch size for INSERTs")
+    parser.add_argument(
+        "--batch-size", type=int, default=1000, help="Batch size for INSERTs"
+    )
 
     # Site mappings (required)
     parser.add_argument(
@@ -678,22 +705,23 @@ def main():
         action="append",
         required=True,
         metavar="MATOMO_ID:UMAMI_UUID:DOMAIN",
-        help="Site mapping (can specify multiple times)"
+        help="Site mapping (can specify multiple times)",
     )
 
     # Dry run mode
     parser.add_argument(
         "--dry-run",
         action="store_true",
-        help="Show migration summary without generating SQL"
+        help="Show migration summary without generating SQL",
     )
 
     # Verbosity
     parser.add_argument(
-        "-v", "--verbose",
+        "-v",
+        "--verbose",
         action="count",
         default=0,
-        help="Increase verbosity (-v for INFO, -vv for DEBUG)"
+        help="Increase verbosity (-v for INFO, -vv for DEBUG)",
     )
 
     args = parser.parse_args()
@@ -712,7 +740,9 @@ def main():
 
     logger.info(f"Configured {len(site_mappings)} site mapping(s)")
     for mapping in site_mappings:
-        logger.debug(f"  Site {mapping.matomo_idsite} -> {mapping.umami_website_id} ({mapping.domain})")
+        logger.debug(
+            f"  Site {mapping.matomo_idsite} -> {mapping.umami_website_id} ({mapping.domain})"
+        )
 
     # Parse dates
     start_date = None
@@ -742,13 +772,19 @@ def main():
 
         if args.dry_run:
             # Dry run mode - just show summary
-            console.print("\n[bold cyan]Dry Run Mode[/bold cyan] - No SQL will be generated\n")
+            console.print(
+                "\n[bold cyan]Dry Run Mode[/bold cyan] - No SQL will be generated\n"
+            )
             summary = migrator.print_summary(start_date, end_date)
 
-            if summary['session_count'] == 0 and summary['event_count'] == 0:
-                console.print("\n[yellow]Warning:[/yellow] No data found for the specified criteria.")
+            if summary["session_count"] == 0 and summary["event_count"] == 0:
+                console.print(
+                    "\n[yellow]Warning:[/yellow] No data found for the specified criteria."
+                )
             else:
-                console.print("\n[green]Ready to migrate.[/green] Run without --dry-run to generate SQL.")
+                console.print(
+                    "\n[green]Ready to migrate.[/green] Run without --dry-run to generate SQL."
+                )
         else:
             # Full migration
             migrator.generate_migration_sql(

@@ -1,18 +1,19 @@
 """Tests for field mappings."""
 
 import pytest
+
 from matomo_to_umami.mappings import (
+    generate_uuid_from_matomo_id,
+    map_browser,
+    map_device_type,
+    map_os,
     parse_matomo_url,
     parse_referrer_url,
-    map_browser,
-    map_os,
-    map_device_type,
-    generate_uuid_from_matomo_id,
     truncate_field,
 )
 from matomo_to_umami.migrate import (
-    validate_site_mapping,
     SiteMappingError,
+    validate_site_mapping,
 )
 
 
@@ -66,7 +67,9 @@ class TestParseReferrerUrl:
     """Tests for parse_referrer_url function."""
 
     def test_full_url_with_query(self):
-        hostname, path, query = parse_referrer_url("https://www.google.com/search?q=test")
+        hostname, path, query = parse_referrer_url(
+            "https://www.google.com/search?q=test"
+        )
         assert hostname == "www.google.com"
         assert path == "/search"
         assert query == "q=test"
@@ -92,95 +95,96 @@ class TestParseReferrerUrl:
 
 class TestMapBrowser:
     """Tests for browser code mapping."""
-    
+
     def test_chrome(self):
         assert map_browser("CH") == "chrome"
-    
+
     def test_firefox(self):
         assert map_browser("FF") == "firefox"
-    
+
     def test_safari(self):
         assert map_browser("SF") == "safari"
-    
+
     def test_chrome_mobile(self):
         assert map_browser("CM") == "chrome-mobile"
-    
+
     def test_unknown_browser_lowercased(self):
         assert map_browser("XX") == "xx"
-    
+
     def test_none(self):
         assert map_browser(None) is None
 
 
 class TestMapOs:
     """Tests for OS code mapping."""
-    
+
     def test_windows(self):
         assert map_os("WIN") == "windows"
-    
+
     def test_macos(self):
         assert map_os("MAC") == "mac-os"
-    
+
     def test_linux(self):
         assert map_os("LIN") == "linux"
-    
+
     def test_android(self):
         assert map_os("AND") == "android"
-    
+
     def test_ios(self):
         assert map_os("IOS") == "ios"
-    
+
     def test_unknown_os_lowercased(self):
         assert map_os("XXX") == "xxx"
-    
+
     def test_none(self):
         assert map_os(None) is None
 
 
 class TestMapDeviceType:
     """Tests for device type mapping."""
-    
+
     def test_desktop(self):
         assert map_device_type(0) == "desktop"
-    
+
     def test_smartphone(self):
         assert map_device_type(1) == "smartphone"
-    
+
     def test_tablet(self):
         assert map_device_type(2) == "tablet"
-    
+
     def test_unknown_defaults_to_desktop(self):
         assert map_device_type(99) == "desktop"
-    
+
     def test_none(self):
         assert map_device_type(None) is None
 
 
 class TestGenerateUuid:
     """Tests for UUID generation."""
-    
+
     def test_deterministic(self):
         """Same input always produces same output."""
         uuid1 = generate_uuid_from_matomo_id(12345, "visit")
         uuid2 = generate_uuid_from_matomo_id(12345, "visit")
         assert uuid1 == uuid2
-    
+
     def test_different_ids_different_uuids(self):
         """Different IDs produce different UUIDs."""
         uuid1 = generate_uuid_from_matomo_id(1, "visit")
         uuid2 = generate_uuid_from_matomo_id(2, "visit")
         assert uuid1 != uuid2
-    
+
     def test_different_prefixes_different_uuids(self):
         """Different prefixes produce different UUIDs."""
         uuid1 = generate_uuid_from_matomo_id(1, "visit")
         uuid2 = generate_uuid_from_matomo_id(1, "action")
         assert uuid1 != uuid2
-    
+
     def test_valid_uuid_format(self):
         """Output is valid UUID format."""
         uuid_str = generate_uuid_from_matomo_id(1, "test")
         import uuid
+
         # Should not raise
         uuid.UUID(uuid_str)
 
@@ -206,14 +210,18 @@ class TestValidateSiteMapping:
 
     def test_valid_mapping(self):
         """Valid mapping string parses correctly."""
-        mapping = validate_site_mapping("1:550e8400-e29b-41d4-a716-446655440000:example.com")
+        mapping = validate_site_mapping(
+            "1:550e8400-e29b-41d4-a716-446655440000:example.com"
+        )
         assert mapping.matomo_idsite == 1
         assert mapping.umami_website_id == "550e8400-e29b-41d4-a716-446655440000"
         assert mapping.domain == "example.com"
 
     def test_valid_mapping_with_subdomain(self):
         """Domain can include subdomains."""
-        mapping = validate_site_mapping("2:550e8400-e29b-41d4-a716-446655440000:www.example.com")
+        mapping = validate_site_mapping(
+            "2:550e8400-e29b-41d4-a716-446655440000:www.example.com"
+        )
         assert mapping.domain == "www.example.com"
 
     def test_invalid_format_too_few_parts(self):
@@ -225,7 +233,9 @@ class TestValidateSiteMapping:
     def test_invalid_matomo_id_not_integer(self):
         """Non-integer Matomo ID raises error."""
         with pytest.raises(SiteMappingError) as excinfo:
-            validate_site_mapping("abc:550e8400-e29b-41d4-a716-446655440000:example.com")
+            validate_site_mapping(
+                "abc:550e8400-e29b-41d4-a716-446655440000:example.com"
+            )
         assert "must be an integer" in str(excinfo.value)
 
     def test_invalid_matomo_id_zero(self):
