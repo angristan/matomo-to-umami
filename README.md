@@ -74,22 +74,6 @@ This migration tool:
 └─────────────────────────────────────────────────────────────┘
 ```
 
-### Key Mappings
-
-**Browser codes** (Matomo short codes → Umami names):
-
-- `CH` → `chrome`, `FF` → `firefox`, `SF` → `safari`, `ED` → `edge`
-- `CM` → `chrome-mobile`, `AN` → `android-browser`, `SM` → `samsung-browser`
-
-**OS codes**:
-
-- `WIN` → `windows`, `MAC` → `mac-os`, `LIN` → `linux`
-- `AND` → `android`, `IOS` → `ios`
-
-**Device types** (Matomo numeric → Umami string):
-
-- `0` → `desktop`, `1` → `smartphone`, `2` → `tablet`
-
 ### UUID Generation
 
 The tool generates deterministic UUIDs using UUID v5 with the RFC 4122 URL namespace. Each entity type has a prefix:
@@ -305,21 +289,6 @@ docker-compose down -v
 docker-compose up -d
 ```
 
-## Project Structure
-
-```
-matomo-to-umami/
-├── src/matomo_to_umami/
-│   ├── migrate.py      # Core migration logic and CLI
-│   └── mappings.py     # Field mappings (browser/OS/device codes, URL parsing)
-├── tests/
-│   ├── test_mappings.py    # Unit tests for field mappings
-│   └── test_migration.py   # Integration tests (require live databases)
-├── docker-compose.yml      # Local dev environment
-├── pyproject.toml          # Project config and dependencies
-└── main.py                 # Simple entry point
-```
-
 ## How the Migration Works (Technical Details)
 
 ### Session Migration
@@ -369,38 +338,6 @@ ON CONFLICT (event_id) DO NOTHING;
 COMMIT;
 ```
 
-## Testing
-
-```bash
-# Run all tests
-pytest
-
-# Run only unit tests (no database required)
-pytest tests/test_mappings.py
-
-# Run integration tests (requires Docker Compose services)
-docker-compose up -d
-pytest tests/test_migration.py -v
-```
-
-### Test Coverage
-
-**Unit tests** (`test_mappings.py`):
-
-- URL parsing with different prefix values
-- Referrer URL extraction
-- Browser/OS/device code mapping
-- UUID generation determinism
-- Field truncation
-
-**Integration tests** (`test_migration.py`):
-
-- Data overlap verification between systems
-- Daily visit count comparison
-- Top pages validation
-- Browser distribution analysis
-- SQL generation validation
-
 ## Limitations and Caveats
 
 1. **Pageviews only**: Custom events, goals, and e-commerce data are not migrated
@@ -418,14 +355,6 @@ pytest tests/test_migration.py -v
 **Memory issues**: Reduce `--batch-size` for large migrations, or split by date ranges.
 
 **Missing referrers**: If action-level referrer is NULL, the tool falls back to visit-level referrer. Some pageviews may still have no referrer data.
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Add tests for new functionality
-4. Run `pytest` to ensure tests pass
-5. Submit a pull request
 
 ## License
 
