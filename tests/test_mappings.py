@@ -10,6 +10,10 @@ from matomo_to_umami.mappings import (
     generate_uuid_from_matomo_id,
     truncate_field,
 )
+from matomo_to_umami.migrate import (
+    validate_site_mapping,
+    SiteMappingError,
+)
 
 
 class TestParseMatmoUrl:
@@ -167,15 +171,73 @@ class TestGenerateUuid:
 
 class TestTruncateField:
     """Tests for field truncation."""
-    
+
     def test_no_truncation_needed(self):
         assert truncate_field("short", 10) == "short"
-    
+
     def test_truncation(self):
         assert truncate_field("this is a long string", 10) == "this is a "
-    
+
     def test_exact_length(self):
         assert truncate_field("12345", 5) == "12345"
-    
+
     def test_none_input(self):
         assert truncate_field(None, 10) is None
+
+
+class TestValidateSiteMapping:
+    """Tests for site mapping validation."""
+
+    def test_valid_mapping(self):
+        """Valid mapping string parses correctly."""
+        mapping = validate_site_mapping("1:550e8400-e29b-41d4-a716-446655440000:example.com")
+        assert mapping.matomo_idsite == 1
+        assert mapping.umami_website_id == "550e8400-e29b-41d4-a716-446655440000"
+        assert mapping.domain == "example.com"
+
+    def test_valid_mapping_with_subdomain(self):
+        """Domain can include subdomains."""
+        mapping = validate_site_mapping("2:550e8400-e29b-41d4-a716-446655440000:www.example.com")
+        assert mapping.domain == "www.example.com"
+
+    def test_invalid_format_too_few_parts(self):
+        """Mapping with too few parts raises error."""
+        with pytest.raises(SiteMappingError) as excinfo:
+            validate_site_mapping("1:example.com")
+        assert "Invalid site mapping format" in str(excinfo.value)
+
+    def test_invalid_matomo_id_not_integer(self):
+        """Non-integer Matomo ID raises error."""
+        with pytest.raises(SiteMappingError) as excinfo:
+            validate_site_mapping("abc:550e8400-e29b-41d4-a716-446655440000:example.com")
+        assert "must be an integer" in str(excinfo.value)
+
+    def test_invalid_matomo_id_zero(self):
+        """Zero Matomo ID raises error."""
+        with pytest.raises(SiteMappingError) as excinfo:
+            validate_site_mapping("0:550e8400-e29b-41d4-a716-446655440000:example.com")
+        assert "must be a positive integer" in str(excinfo.value)
+
+    def test_invalid_matomo_id_negative(self):
+        """Negative Matomo ID raises error."""
+        with pytest.raises(SiteMappingError) as excinfo:
+            validate_site_mapping("-1:550e8400-e29b-41d4-a716-446655440000:example.com")
+        assert "must be a positive integer" in str(excinfo.value)
+
+    def test_invalid_uuid_format(self):
+        """Invalid UUID format raises error."""
+        with pytest.raises(SiteMappingError) as excinfo:
+            validate_site_mapping("1:not-a-valid-uuid:example.com")
+        assert "Invalid Umami UUID" in str(excinfo.value)
+
+    def test_invalid_domain_empty(self):
+        """Empty domain raises error."""
+        with pytest.raises(SiteMappingError) as excinfo:
+            validate_site_mapping("1:550e8400-e29b-41d4-a716-446655440000:")
+        assert "Invalid domain" in str(excinfo.value)
+
+    def test_invalid_domain_starts_with_dot(self):
+        """Domain starting with dot raises error."""
+        with pytest.raises(SiteMappingError) as excinfo:
+            validate_site_mapping("1:550e8400-e29b-41d4-a716-446655440000:.example.com")
+        assert "Invalid domain" in str(excinfo.value)

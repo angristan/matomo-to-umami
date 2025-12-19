@@ -1,10 +1,13 @@
 """Migration script to convert Matomo data to Umami SQL."""
 
 import argparse
+import re
 import sys
 from datetime import datetime
 from typing import Generator, Optional
 import mysql.connector
+from mysql.connector import Error as MySQLError
+from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn, TimeElapsedColumn, MofNCompleteColumn
 from .mappings import (
     SiteMapping,
@@ -16,6 +19,85 @@ from .mappings import (
     map_device_type,
     truncate_field,
 )
+
+console = Console(stderr=True)
+
+
+class MigrationError(Exception):
+    """Base exception for migration errors."""
+    pass
+
+
+class DatabaseConnectionError(MigrationError):
+    """Raised when database connection fails."""
+    pass
+
+
+class SiteMappingError(MigrationError):
+    """Raised when site mapping parsing fails."""
+    pass
+
+
+def validate_site_mapping(mapping_str: str) -> SiteMapping:
+    """Parse and validate a site mapping string.
+
+    Args:
+        mapping_str: Format "matomo_id:umami_uuid:domain"
+
+    Returns:
+        SiteMapping object
+
+    Raises:
+        SiteMappingError: If the mapping string is invalid
+    """
+    parts = mapping_str.split(":")
+
+    if len(parts) < 3:
+        raise SiteMappingError(
+            f"Invalid site mapping format: '{mapping_str}'\n"
+            f"Expected format: matomo_id:umami_uuid:domain\n"
+            f"Example: 1:550e8400-e29b-41d4-a716-446655440000:example.com"
+        )
+
+    # Parse matomo_id
+    try:
+        matomo_id = int(parts[0])
+        if matomo_id <= 0:
+            raise SiteMappingError(
+                f"Invalid Matomo site ID: '{parts[0]}' (must be a positive integer)"
+            )
+    except ValueError:
+        raise SiteMappingError(
+            f"Invalid Matomo site ID: '{parts[0]}' (must be an integer)"
+        )
+
+    # Handle UUID which contains colons - rejoin all parts except first and last
+    domain = parts[-1]
+    umami_uuid = ":".join(parts[1:-1])
+
+    # Validate UUID format
+    uuid_pattern = re.compile(
+        r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',
+        re.IGNORECASE
+    )
+    if not uuid_pattern.match(umami_uuid):
+        raise SiteMappingError(
+            f"Invalid Umami UUID: '{umami_uuid}'\n"
+            f"Expected format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+        )
+
+    # Validate domain
+    if not domain or domain.startswith('.') or ' ' in domain:
+        raise SiteMappingError(
+            f"Invalid domain: '{domain}'\n"
+            f"Domain should be a valid hostname (e.g., example.com)"
+        )
+
+    return SiteMapping(
+        matomo_idsite=matomo_id,
+        umami_website_id=umami_uuid,
+        domain=domain,
+    )
 
 
 def escape_sql_string(value: Optional[str], max_length: Optional[int] = None) -> str:
@@ -66,9 +148,36 @@ class MatomoToUmamiMigrator:
         self._site_map = {m.matomo_idsite: m for m in self.site_mappings}
     
     def connect(self):
-        """Connect to Matomo MySQL database."""
-        self.conn = mysql.connector.connect(**self.mysql_config)
-        self.cursor = self.conn.cursor(dictionary=True)
+        """Connect to Matomo MySQL database.
+
+        Raises:
+            DatabaseConnectionError: If connection fails
+        """
+        try:
+            self.conn = mysql.connector.connect(**self.mysql_config)
+            self.cursor = self.conn.cursor(dictionary=True)
+        except MySQLError as e:
+            error_code = e.errno if hasattr(e, 'errno') else 'unknown'
+            if error_code == 1045:  # Access denied
+                raise DatabaseConnectionError(
+                    f"Access denied for user '{self.mysql_config['user']}'\n"
+                    f"Please check your MySQL username and password."
+                ) from e
+            elif error_code == 2003:  # Can't connect
+                raise DatabaseConnectionError(
+                    f"Cannot connect to MySQL server at "
+                    f"'{self.mysql_config['host']}:{self.mysql_config['port']}'\n"
+                    f"Please check that the server is running and accessible."
+                ) from e
+            elif error_code == 1049:  # Unknown database
+                raise DatabaseConnectionError(
+                    f"Database '{self.mysql_config['database']}' does not exist.\n"
+                    f"Please check your database name."
+                ) from e
+            else:
+                raise DatabaseConnectionError(
+                    f"Failed to connect to MySQL: {e}"
+                ) from e
     
     def close(self):
         """Close database connection."""
@@ -394,45 +503,40 @@ def main():
     parser.add_argument("--end-date", help="End date (YYYY-MM-DD)")
     parser.add_argument("--output", "-o", help="Output file (default: stdout)")
     parser.add_argument("--batch-size", type=int, default=1000, help="Batch size for INSERTs")
-    
+
     # Site mappings (required)
     parser.add_argument(
         "--site-mapping",
         action="append",
         required=True,
-        help="Site mapping in format: matomo_id:umami_uuid:domain (can specify multiple)"
+        metavar="MATOMO_ID:UMAMI_UUID:DOMAIN",
+        help="Site mapping (can specify multiple times)"
     )
-    
+
     args = parser.parse_args()
-    
-    # Parse site mappings
+
+    # Parse and validate site mappings
     site_mappings = []
     for mapping_str in args.site_mapping:
-        parts = mapping_str.split(":")
-        if len(parts) < 3:
-            print(f"Error: Invalid site mapping format: {mapping_str}", file=sys.stderr)
-            print("Expected format: matomo_id:umami_uuid:domain", file=sys.stderr)
+        try:
+            site_mappings.append(validate_site_mapping(mapping_str))
+        except SiteMappingError as e:
+            console.print(f"[red]Error:[/red] {e}", highlight=False)
             sys.exit(1)
-        
-        # Handle UUID which contains colons - rejoin all parts except first and last
-        matomo_id = int(parts[0])
-        domain = parts[-1]
-        umami_uuid = ":".join(parts[1:-1])
-        
-        site_mappings.append(SiteMapping(
-            matomo_idsite=matomo_id,
-            umami_website_id=umami_uuid,
-            domain=domain,
-        ))
-    
+
     # Parse dates
     start_date = None
     end_date = None
-    if args.start_date:
-        start_date = datetime.fromisoformat(args.start_date)
-    if args.end_date:
-        end_date = datetime.fromisoformat(args.end_date)
-    
+    try:
+        if args.start_date:
+            start_date = datetime.fromisoformat(args.start_date)
+        if args.end_date:
+            end_date = datetime.fromisoformat(args.end_date)
+    except ValueError as e:
+        console.print(f"[red]Error:[/red] Invalid date format: {e}", highlight=False)
+        console.print("Use YYYY-MM-DD format (e.g., 2024-01-15)")
+        sys.exit(1)
+
     migrator = MatomoToUmamiMigrator(
         mysql_host=args.mysql_host,
         mysql_port=args.mysql_port,
@@ -442,7 +546,7 @@ def main():
         site_mappings=site_mappings,
         batch_size=args.batch_size,
     )
-    
+
     try:
         migrator.connect()
         migrator.generate_migration_sql(
@@ -450,6 +554,12 @@ def main():
             end_date=end_date,
             output_file=args.output,
         )
+    except DatabaseConnectionError as e:
+        console.print(f"[red]Database Error:[/red] {e}", highlight=False)
+        sys.exit(1)
+    except KeyboardInterrupt:
+        console.print("\n[yellow]Migration cancelled by user[/yellow]")
+        sys.exit(130)
     finally:
         migrator.close()
 

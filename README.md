@@ -278,6 +278,19 @@ COMMIT;
 
 ## Troubleshooting
 
+**Connection errors**: The tool provides user-friendly error messages for common database issues:
+
+- Access denied: Check your MySQL username and password
+- Cannot connect: Verify the server is running and accessible
+- Unknown database: Check your database name
+
+**Invalid site mapping**: The tool validates site mappings and provides helpful error messages:
+
+```text
+Error: Invalid Umami UUID: 'not-a-uuid'
+Expected format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+```
+
 **"Unknown browser code"**: The migration maps unknown codes to the original value. Check if it's a newer browser not in the mapping.
 
 **Duplicate key errors**: The SQL uses `ON CONFLICT DO NOTHING`, so duplicates are safely ignored. This is expected on re-runs.
