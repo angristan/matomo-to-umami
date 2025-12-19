@@ -9,6 +9,7 @@ import mysql.connector
 from mysql.connector import Error as MySQLError
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn, TimeElapsedColumn, MofNCompleteColumn
+from rich.table import Table
 from .mappings import (
     SiteMapping,
     generate_uuid_from_matomo_id,
@@ -241,6 +242,107 @@ class MatomoToUmamiMigrator:
         """
         self.cursor.execute(query, params)
         return self.cursor.fetchone()['cnt']
+
+    def get_date_range(self, start_date=None, end_date=None) -> dict:
+        """Get the actual date range of data to be migrated."""
+        where_sql, params = self._build_session_where(start_date, end_date)
+        query = f"""
+            SELECT
+                MIN(v.visit_first_action_time) as min_date,
+                MAX(v.visit_first_action_time) as max_date
+            FROM piwik_log_visit v
+            WHERE {where_sql}
+        """
+        self.cursor.execute(query, params)
+        result = self.cursor.fetchone()
+        return {
+            'min_date': result['min_date'],
+            'max_date': result['max_date'],
+        }
+
+    def get_summary(self, start_date=None, end_date=None) -> dict:
+        """Get a summary of data to be migrated.
+
+        Returns:
+            Dict with session_count, event_count, date_range, and site details
+        """
+        session_count = self.count_sessions(start_date, end_date)
+        event_count = self.count_events(start_date, end_date)
+        date_range = self.get_date_range(start_date, end_date)
+
+        # Get per-site breakdown
+        site_breakdown = []
+        for mapping in self.site_mappings:
+            where_sql, params = self._build_session_where(start_date, end_date)
+            query = f"""
+                SELECT COUNT(*) as cnt FROM piwik_log_visit v
+                WHERE {where_sql} AND v.idsite = %s
+            """
+            self.cursor.execute(query, params + [mapping.matomo_idsite])
+            site_sessions = self.cursor.fetchone()['cnt']
+
+            where_sql, params = self._build_event_where(start_date, end_date)
+            query = f"""
+                SELECT COUNT(*) as cnt FROM piwik_log_link_visit_action lva
+                WHERE {where_sql} AND lva.idsite = %s AND lva.idaction_url IS NOT NULL
+            """
+            self.cursor.execute(query, params + [mapping.matomo_idsite])
+            site_events = self.cursor.fetchone()['cnt']
+
+            site_breakdown.append({
+                'matomo_id': mapping.matomo_idsite,
+                'umami_id': mapping.umami_website_id,
+                'domain': mapping.domain,
+                'sessions': site_sessions,
+                'events': site_events,
+            })
+
+        return {
+            'session_count': session_count,
+            'event_count': event_count,
+            'date_range': date_range,
+            'sites': site_breakdown,
+        }
+
+    def print_summary(self, start_date=None, end_date=None) -> dict:
+        """Print a formatted summary table and return the summary data."""
+        summary = self.get_summary(start_date, end_date)
+
+        # Create summary table
+        table = Table(title="Migration Summary")
+        table.add_column("Metric", style="cyan")
+        table.add_column("Value", style="green")
+
+        table.add_row("Total Sessions", f"{summary['session_count']:,}")
+        table.add_row("Total Events", f"{summary['event_count']:,}")
+
+        if summary['date_range']['min_date']:
+            table.add_row("Date Range Start", str(summary['date_range']['min_date']))
+            table.add_row("Date Range End", str(summary['date_range']['max_date']))
+        else:
+            table.add_row("Date Range", "No data found")
+
+        console.print(table)
+
+        # Site breakdown table
+        if summary['sites']:
+            site_table = Table(title="Per-Site Breakdown")
+            site_table.add_column("Matomo ID", style="cyan")
+            site_table.add_column("Domain", style="blue")
+            site_table.add_column("Sessions", style="green", justify="right")
+            site_table.add_column("Events", style="green", justify="right")
+
+            for site in summary['sites']:
+                site_table.add_row(
+                    str(site['matomo_id']),
+                    site['domain'],
+                    f"{site['sessions']:,}",
+                    f"{site['events']:,}",
+                )
+
+            console.print(site_table)
+
+        return summary
 
     def generate_sessions_sql(
         self,
@@ -513,6 +615,13 @@ def main():
         help="Site mapping (can specify multiple times)"
     )
 
+    # Dry run mode
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Show migration summary without generating SQL"
+    )
+
     args = parser.parse_args()
 
     # Parse and validate site mappings
@@ -549,11 +658,23 @@ def main():
 
     try:
         migrator.connect()
-        migrator.generate_migration_sql(
-            start_date=start_date,
-            end_date=end_date,
-            output_file=args.output,
-        )
+
+        if args.dry_run:
+            # Dry run mode - just show summary
+            console.print("\n[bold cyan]Dry Run Mode[/bold cyan] - No SQL will be generated\n")
+            summary = migrator.print_summary(start_date, end_date)
+
+            if summary['session_count'] == 0 and summary['event_count'] == 0:
+                console.print("\n[yellow]Warning:[/yellow] No data found for the specified criteria.")
+            else:
+                console.print("\n[green]Ready to migrate.[/green] Run without --dry-run to generate SQL.")
+        else:
+            # Full migration
+            migrator.generate_migration_sql(
+                start_date=start_date,
+                end_date=end_date,
+                output_file=args.output,
+            )
     except DatabaseConnectionError as e:
         console.print(f"[red]Database Error:[/red] {e}", highlight=False)
         sys.exit(1)

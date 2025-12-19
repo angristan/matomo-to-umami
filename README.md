@@ -30,6 +30,7 @@ This migration tool:
 | Date range filtering | Covered                         |
 | Batch processing     | Covered                         |
 | Progress bar         | Covered                         |
+| Dry run preview      | Covered                         |
 
 ## What's NOT Covered
 
@@ -190,6 +191,29 @@ migrate \
 | `--end-date`       | End of date range (YYYY-MM-DD)                     |
 | `--output`         | Output SQL file (default: stdout)                  |
 | `--batch-size`     | Rows per INSERT statement (default: 1000)          |
+| `--dry-run`        | Show migration summary without generating SQL      |
+
+#### Preview with Dry Run
+
+Before generating the full migration, use `--dry-run` to see what would be migrated:
+
+```bash
+migrate \
+  --mysql-host localhost \
+  --mysql-port 3307 \
+  --site-mapping "1:a5d41854-bde7-4416-819f-3923ea2b2706:example.com" \
+  --dry-run
+
+# Output:
+# ┏━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━┓
+# ┃ Metric            ┃ Value                 ┃
+# ┡━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━┩
+# │ Total Sessions    │ 642,648               │
+# │ Total Events      │ 856,788               │
+# │ Date Range Start  │ 2020-01-15 08:23:41   │
+# │ Date Range End    │ 2024-12-18 22:15:03   │
+# └───────────────────┴───────────────────────┘
+```
 
 #### 5. Import into local Umami and verify
 
