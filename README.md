@@ -29,6 +29,7 @@ This migration tool:
 | Multi-site support   | Covered                         |
 | Date range filtering | Covered                         |
 | Batch processing     | Covered                         |
+| Progress bar         | Covered                         |
 
 ## What's NOT Covered
 
@@ -170,6 +171,9 @@ migrate \
   --start-date 2020-01-01 \
   --end-date 2024-12-31 \
   --output migration.sql
+
+# Sessions ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 642648/642648 0:00:07
+# Events   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 856788/856788 0:00:15
 ```
 
 **Parameters:**

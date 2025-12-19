@@ -5,6 +5,7 @@ import sys
 from datetime import datetime
 from typing import Generator, Optional
 import mysql.connector
+from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn, TimeElapsedColumn, MofNCompleteColumn
 from .mappings import (
     SiteMapping,
     generate_uuid_from_matomo_id,
@@ -79,36 +80,71 @@ class MatomoToUmamiMigrator:
     def get_site_mapping(self, idsite: int) -> Optional[SiteMapping]:
         """Get Umami website ID for a Matomo site ID."""
         return self._site_map.get(idsite)
-    
-    def generate_sessions_sql(
-        self,
-        start_date: Optional[datetime] = None,
-        end_date: Optional[datetime] = None,
-    ) -> Generator[str, None, None]:
-        """Generate SQL INSERT statements for sessions."""
-        
+
+    def _build_session_where(self, start_date, end_date):
+        """Build WHERE clause and params for session queries."""
         where_clauses = ["1=1"]
         params = []
-        
-        # Filter by sites we have mappings for
         if self.site_mappings:
             site_ids = [m.matomo_idsite for m in self.site_mappings]
             placeholders = ", ".join(["%s"] * len(site_ids))
             where_clauses.append(f"v.idsite IN ({placeholders})")
             params.extend(site_ids)
-        
         if start_date:
             where_clauses.append("v.visit_first_action_time >= %s")
             params.append(start_date)
-        
         if end_date:
             where_clauses.append("v.visit_first_action_time < %s")
             params.append(end_date)
-        
-        where_sql = " AND ".join(where_clauses)
-        
+        return " AND ".join(where_clauses), params
+
+    def _build_event_where(self, start_date, end_date):
+        """Build WHERE clause and params for event queries."""
+        where_clauses = ["1=1"]
+        params = []
+        if self.site_mappings:
+            site_ids = [m.matomo_idsite for m in self.site_mappings]
+            placeholders = ", ".join(["%s"] * len(site_ids))
+            where_clauses.append(f"lva.idsite IN ({placeholders})")
+            params.extend(site_ids)
+        if start_date:
+            where_clauses.append("lva.server_time >= %s")
+            params.append(start_date)
+        if end_date:
+            where_clauses.append("lva.server_time < %s")
+            params.append(end_date)
+        return " AND ".join(where_clauses), params
+
+    def count_sessions(self, start_date=None, end_date=None) -> int:
+        """Count total sessions to migrate."""
+        where_sql, params = self._build_session_where(start_date, end_date)
+        query = f"SELECT COUNT(*) as cnt FROM piwik_log_visit v WHERE {where_sql}"
+        self.cursor.execute(query, params)
+        return self.cursor.fetchone()['cnt']
+
+    def count_events(self, start_date=None, end_date=None) -> int:
+        """Count total events to migrate."""
+        where_sql, params = self._build_event_where(start_date, end_date)
         query = f"""
-            SELECT 
+            SELECT COUNT(*) as cnt
+            FROM piwik_log_link_visit_action lva
+            WHERE {where_sql} AND lva.idaction_url IS NOT NULL
+        """
+        self.cursor.execute(query, params)
+        return self.cursor.fetchone()['cnt']
+
+    def generate_sessions_sql(
+        self,
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None,
+        progress: Optional[Progress] = None,
+        task_id=None,
+    ) -> Generator[str, None, None]:
+        """Generate SQL INSERT statements for sessions."""
+        where_sql, params = self._build_session_where(start_date, end_date)
+
+        query = f"""
+            SELECT
                 v.idvisit,
                 v.idsite,
                 v.idvisitor,
@@ -125,13 +161,13 @@ class MatomoToUmamiMigrator:
             WHERE {where_sql}
             ORDER BY v.idvisit
         """
-        
+
         self.cursor.execute(query, params)
-        
+
         yield "-- Sessions (from piwik_log_visit)"
         yield "-- Maps to Umami session table"
         yield ""
-        
+
         batch = []
         for row in self.cursor:
             mapping = self.get_site_mapping(row['idsite'])
@@ -165,14 +201,17 @@ class MatomoToUmamiMigrator:
                 "NULL",  # distinct_id
             )
             batch.append(f"({', '.join(values)})")
-            
+
+            if progress and task_id is not None:
+                progress.advance(task_id)
+
             if len(batch) >= self.batch_size:
                 yield self._format_session_insert(batch)
                 batch = []
-        
+
         if batch:
             yield self._format_session_insert(batch)
-    
+
     def _format_session_insert(self, values: list[str]) -> str:
         """Format a batch INSERT for sessions."""
         return f"""INSERT INTO session (session_id, website_id, browser, os, device, screen, language, country, region, city, created_at, distinct_id)
@@ -185,29 +224,12 @@ ON CONFLICT (session_id) DO NOTHING;
         self,
         start_date: Optional[datetime] = None,
         end_date: Optional[datetime] = None,
+        progress: Optional[Progress] = None,
+        task_id=None,
     ) -> Generator[str, None, None]:
         """Generate SQL INSERT statements for website_event."""
-        
-        where_clauses = ["1=1"]
-        params = []
-        
-        # Filter by sites we have mappings for
-        if self.site_mappings:
-            site_ids = [m.matomo_idsite for m in self.site_mappings]
-            placeholders = ", ".join(["%s"] * len(site_ids))
-            where_clauses.append(f"lva.idsite IN ({placeholders})")
-            params.extend(site_ids)
-        
-        if start_date:
-            where_clauses.append("lva.server_time >= %s")
-            params.append(start_date)
-        
-        if end_date:
-            where_clauses.append("lva.server_time < %s")
-            params.append(end_date)
-        
-        where_sql = " AND ".join(where_clauses)
-        
+        where_sql, params = self._build_event_where(start_date, end_date)
+
         # Join with log_action to get URL and page title
         query = f"""
             SELECT 
@@ -287,14 +309,17 @@ ON CONFLICT (session_id) DO NOTHING;
                 escape_sql_string(hostname, 100),
             )
             batch.append(f"({', '.join(values)})")
-            
+
+            if progress and task_id is not None:
+                progress.advance(task_id)
+
             if len(batch) >= self.batch_size:
                 yield self._format_event_insert(batch)
                 batch = []
-        
+
         if batch:
             yield self._format_event_insert(batch)
-    
+
     def _format_event_insert(self, values: list[str]) -> str:
         """Format a batch INSERT for events."""
         return f"""INSERT INTO website_event (event_id, website_id, session_id, created_at, url_path, url_query, referrer_path, referrer_query, referrer_domain, page_title, event_type, event_name, visit_id, tag, hostname)
@@ -310,41 +335,52 @@ ON CONFLICT (event_id) DO NOTHING;
         output_file: str = None,
     ):
         """Generate complete migration SQL."""
-        
-        def write_output(lines):
+        # Count totals for progress bar
+        session_count = self.count_sessions(start_date, end_date)
+        event_count = self.count_events(start_date, end_date)
+
+        # Open output file if specified
+        out = open(output_file, 'w') if output_file else sys.stdout
+
+        def write(line):
+            out.write(line + "\n")
+
+        try:
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                BarColumn(),
+                MofNCompleteColumn(),
+                TimeElapsedColumn(),
+            ) as progress:
+                # Write header
+                write("-- Matomo to Umami Migration SQL")
+                write(f"-- Generated at: {datetime.now().isoformat()}")
+                if start_date:
+                    write(f"-- Start date: {start_date.isoformat()}")
+                if end_date:
+                    write(f"-- End date: {end_date.isoformat()}")
+                write("")
+                write("BEGIN;")
+                write("")
+
+                # Sessions
+                session_task = progress.add_task("Sessions", total=session_count)
+                for line in self.generate_sessions_sql(start_date, end_date, progress, session_task):
+                    write(line)
+
+                write("")
+
+                # Events
+                event_task = progress.add_task("Events", total=event_count)
+                for line in self.generate_events_sql(start_date, end_date, progress, event_task):
+                    write(line)
+
+                write("")
+                write("COMMIT;")
+        finally:
             if output_file:
-                with open(output_file, 'w') as f:
-                    for line in lines:
-                        f.write(line + "\n")
-            else:
-                for line in lines:
-                    print(line)
-        
-        def generate_all():
-            yield "-- Matomo to Umami Migration SQL"
-            yield f"-- Generated at: {datetime.now().isoformat()}"
-            if start_date:
-                yield f"-- Start date: {start_date.isoformat()}"
-            if end_date:
-                yield f"-- End date: {end_date.isoformat()}"
-            yield ""
-            yield "BEGIN;"
-            yield ""
-
-            # Sessions first (foreign key dependency)
-            for line in self.generate_sessions_sql(start_date, end_date):
-                yield line
-
-            yield ""
-
-            # Then events
-            for line in self.generate_events_sql(start_date, end_date):
-                yield line
-
-            yield ""
-            yield "COMMIT;"
-        
-        write_output(generate_all())
+                out.close()
 
 
 def main():
