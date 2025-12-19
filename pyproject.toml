@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "matomo-to-umami"
+version = "0.1.0"
+description = "Migration tool from Matomo to Umami analytics"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "psycopg2-binary>=2.9",
+    "mysql-connector-python>=8.0",
+    "pytest>=8.0",
+]
+
+[project.scripts]
+migrate = "matomo_to_umami.migrate:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
