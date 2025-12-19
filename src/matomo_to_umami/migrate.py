@@ -392,7 +392,7 @@ class MatomoToUmamiMigrator:
         end_date: datetime | None = None,
         progress: Progress | None = None,
         task_id=None,
-    ) -> Generator[str, None, None]:
+    ) -> Generator[str]:
         """Generate SQL INSERT statements for sessions."""
         where_sql, params = self._build_session_where(start_date, end_date)
 
@@ -479,7 +479,7 @@ ON CONFLICT (session_id) DO NOTHING;
         end_date: datetime | None = None,
         progress: Progress | None = None,
         task_id=None,
-    ) -> Generator[str, None, None]:
+    ) -> Generator[str]:
         """Generate SQL INSERT statements for website_event."""
         where_sql, params = self._build_event_where(start_date, end_date)
 
