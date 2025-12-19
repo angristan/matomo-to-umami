@@ -241,3 +241,38 @@ class TestValidateSiteMapping:
         with pytest.raises(SiteMappingError) as excinfo:
             validate_site_mapping("1:550e8400-e29b-41d4-a716-446655440000:.example.com")
         assert "Invalid domain" in str(excinfo.value)
+
+
+class TestExpandedBrowserMappings:
+    """Tests for expanded browser mappings."""
+
+    def test_brave(self):
+        assert map_browser("BR") == "brave"
+
+    def test_vivaldi(self):
+        assert map_browser("VI") == "vivaldi"
+
+    def test_arc(self):
+        assert map_browser("AR") == "arc"
+
+    def test_duckduckgo(self):
+        assert map_browser("DU") == "duckduckgo"
+
+    def test_tor(self):
+        assert map_browser("TH") == "tor"
+
+
+class TestExpandedOSMappings:
+    """Tests for expanded OS mappings."""
+
+    def test_harmonyos(self):
+        assert map_os("HAR") == "harmonyos"
+
+    def test_arch(self):
+        assert map_os("ARC") == "arch"
+
+    def test_pop_os(self):
+        assert map_os("POP") == "pop-os"
+
+    def test_freebsd(self):
+        assert map_os("FRE") == "freebsd"

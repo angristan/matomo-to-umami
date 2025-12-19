@@ -50,32 +50,106 @@ DEVICE_TYPES = {
 }
 
 # Matomo browser codes to Umami browser names
+# Reference: https://github.com/matomo-org/device-detector
 BROWSER_MAPPING = {
+    # Major browsers
     "CH": "chrome",
     "FF": "firefox",
     "SF": "safari",
     "IE": "ie",
     "ED": "edge",
     "OP": "opera",
+    # Mobile variants
     "CM": "chrome-mobile",
+    "FM": "firefox-mobile",
+    "MF": "firefox-mobile",
+    "SM": "safari-mobile",
     "AN": "android-browser",
-    "SM": "samsung-browser",
+    "SB": "samsung-browser",
+    "MI": "miui-browser",
+    # Alternative browsers
+    "BR": "brave",
+    "VI": "vivaldi",
+    "AR": "arc",
+    "WH": "whale",
+    "YA": "yandex",
+    "QQ": "qq-browser",
     "UC": "uc-browser",
-    "HC": "headless-chrome",
+    "BD": "baidu",
+    "MX": "maxthon",
+    "SL": "sleipnir",
+    "KO": "konqueror",
+    "EP": "epiphany",
+    "PS": "pale-moon",
+    "WA": "waterfox",
+    "FL": "floorp",
+    "LB": "librewolf",
+    "TH": "tor",
+    "DU": "duckduckgo",
+    # WebViews and embedded
     "CW": "chrome-webview",
+    "WV": "webview",
+    "FB": "facebook-browser",
+    "IG": "instagram-browser",
+    "TT": "tiktok-browser",
+    "LI": "linkedin-browser",
+    "TW": "twitter-browser",
+    "SN": "snapchat-browser",
+    # Headless/Automation
+    "HC": "headless-chrome",
+    "PH": "phantomjs",
+    "PP": "puppeteer",
+    # Legacy browsers
+    "NS": "netscape",
+    "MO": "mosaic",
+    "NE": "netfront",
+    "OB": "obigo",
+    "OI": "opera-mini",
 }
 
 # Matomo OS codes to Umami OS names
+# Reference: https://github.com/matomo-org/device-detector
 OS_MAPPING = {
+    # Desktop OS
     "WIN": "windows",
     "MAC": "mac-os",
     "LIN": "linux",
+    "COS": "chrome-os",
+    # Mobile OS
     "AND": "android",
     "IOS": "ios",
+    "WPH": "windows-phone",
+    "WMO": "windows-mobile",
+    "BLB": "blackberry",
+    "SYM": "symbian",
+    "WEB": "webos",
+    "KAI": "kaios",
+    "HAR": "harmonyos",
+    "FUC": "fuchsia",
+    # Linux distributions
     "UBT": "ubuntu",
     "FED": "fedora",
     "DEB": "debian",
-    "COS": "chrome-os",
+    "MIN": "mint",
+    "ARC": "arch",
+    "CEN": "centos",
+    "RHL": "red-hat",
+    "SUS": "suse",
+    "GEN": "gentoo",
+    "MAN": "manjaro",
+    "ELE": "elementary",
+    "POP": "pop-os",
+    # BSD variants
+    "BSD": "bsd",
+    "FRE": "freebsd",
+    "OPE": "openbsd",
+    "NET": "netbsd",
+    # Other
+    "AMZ": "fire-os",
+    "TIZ": "tizen",
+    "ROS": "ros",
+    "HAI": "haiku",
+    "UNK": "unknown",
 }
 
 
