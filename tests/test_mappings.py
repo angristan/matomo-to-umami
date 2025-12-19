@@ -18,60 +18,76 @@ from matomo_to_umami.migrate import (
 
 class TestParseMatmoUrl:
     """Tests for parse_matomo_url function."""
-    
+
     def test_prefix_0_with_path(self):
         """URL prefix 0 includes domain in name."""
-        hostname, path = parse_matomo_url("stanislas.blog/2019/01/wireguard/", 0)
+        hostname, path, query = parse_matomo_url("stanislas.blog/2019/01/wireguard/", 0)
         assert hostname == "stanislas.blog"
         assert path == "/2019/01/wireguard/"
-    
+        assert query is None
+
     def test_prefix_0_root(self):
         """URL prefix 0 with just domain."""
-        hostname, path = parse_matomo_url("angristan.fr", 0)
+        hostname, path, query = parse_matomo_url("angristan.fr", 0)
         assert hostname == "angristan.fr"
         assert path == "/"
-    
+        assert query is None
+
     def test_prefix_2_https(self):
         """URL prefix 2 = https://"""
-        hostname, path = parse_matomo_url("stanislas.blog/path/to/page", 2)
+        hostname, path, query = parse_matomo_url("stanislas.blog/path/to/page", 2)
         assert hostname == "stanislas.blog"
         assert path == "/path/to/page"
-    
+        assert query is None
+
     def test_prefix_3_https_www(self):
         """URL prefix 3 = https://www."""
-        hostname, path = parse_matomo_url("example.com/page", 3)
+        hostname, path, query = parse_matomo_url("example.com/page", 3)
         assert hostname == "www.example.com"
         assert path == "/page"
-    
+        assert query is None
+
     def test_prefix_none_defaults_to_0(self):
         """None prefix treated as 0."""
-        hostname, path = parse_matomo_url("example.com/test", None)
+        hostname, path, query = parse_matomo_url("example.com/test", None)
         assert hostname == "example.com"
         assert path == "/test"
+        assert query is None
+
+    def test_empty_query_string(self):
+        """Empty query string after ? returns None."""
+        hostname, path, query = parse_matomo_url("example.com/page?", 0)
+        assert hostname == "example.com"
+        assert path == "/page"
+        assert query is None
 
 
 class TestParseReferrerUrl:
     """Tests for parse_referrer_url function."""
-    
-    def test_full_url_with_path(self):
-        hostname, path = parse_referrer_url("https://www.google.com/search?q=test")
+
+    def test_full_url_with_query(self):
+        hostname, path, query = parse_referrer_url("https://www.google.com/search?q=test")
         assert hostname == "www.google.com"
-        assert path == "/search?q=test"
-    
+        assert path == "/search"
+        assert query == "q=test"
+
     def test_url_without_protocol(self):
-        hostname, path = parse_referrer_url("google.com/")
+        hostname, path, query = parse_referrer_url("google.com/")
         assert hostname == "google.com"
         assert path == "/"
-    
+        assert query is None
+
     def test_none_input(self):
-        hostname, path = parse_referrer_url(None)
+        hostname, path, query = parse_referrer_url(None)
         assert hostname is None
         assert path is None
-    
+        assert query is None
+
     def test_empty_string(self):
-        hostname, path = parse_referrer_url("")
+        hostname, path, query = parse_referrer_url("")
         assert hostname is None
         assert path is None
+        assert query is None
 
 
 class TestMapBrowser:

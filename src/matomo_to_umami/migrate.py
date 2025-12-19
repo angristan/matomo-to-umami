@@ -519,27 +519,27 @@ ON CONFLICT (session_id) DO NOTHING;
             
             # Parse URL
             if row['url_name']:
-                hostname, url_path = parse_matomo_url(row['url_name'], row['url_prefix'])
+                hostname, url_path, url_query = parse_matomo_url(row['url_name'], row['url_prefix'])
             else:
-                hostname, url_path = mapping.domain, "/"
-            
+                hostname, url_path, url_query = mapping.domain, "/", None
+
             # Parse referrer - prefer action referrer, fall back to visit referrer
             if row['ref_url']:
-                ref_domain, ref_path = parse_matomo_url(row['ref_url'], row['ref_url_prefix'])
+                ref_domain, ref_path, ref_query = parse_matomo_url(row['ref_url'], row['ref_url_prefix'])
             elif row['referer_url']:
-                ref_domain, ref_path = parse_referrer_url(row['referer_url'])
+                ref_domain, ref_path, ref_query = parse_referrer_url(row['referer_url'])
             else:
-                ref_domain, ref_path = None, None
-            
+                ref_domain, ref_path, ref_query = None, None, None
+
             values = (
                 f"'{event_id}'",
                 f"'{mapping.umami_website_id}'",
                 f"'{session_id}'",
                 format_timestamp(row['server_time']),
                 escape_sql_string(url_path, 500),
-                "NULL",  # url_query - would need to parse from URL
+                escape_sql_string(url_query, 500),
                 escape_sql_string(ref_path, 500),
-                "NULL",  # referrer_query
+                escape_sql_string(ref_query, 500),
                 escape_sql_string(ref_domain, 500),
                 escape_sql_string(row['page_title'], 500),
                 "1",  # event_type = pageview

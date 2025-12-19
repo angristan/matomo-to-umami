@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 from typing import Optional
+from urllib.parse import urlparse
 import hashlib
 import uuid
 
@@ -171,66 +172,49 @@ def generate_uuid_from_matomo_id(matomo_id: int, prefix: str) -> str:
     return str(uuid.uuid5(namespace, name))
 
 
-def parse_matomo_url(name: str, url_prefix: Optional[int]) -> tuple[str, str]:
-    """Parse Matomo URL into hostname and path.
-    
-    Returns (hostname, path) tuple.
+def parse_matomo_url(name: str, url_prefix: Optional[int]) -> tuple[str, str, Optional[str]]:
+    """Parse Matomo URL into hostname, path, and query string.
+
+    Returns (hostname, path, query) tuple.
     """
     if url_prefix is None:
         url_prefix = 0
-    
+
     prefix = URL_PREFIXES.get(url_prefix, "")
-    
-    # For prefix 0, the domain is included in the name
+
+    # Reconstruct full URL for parsing
+    # Prefix 0 means domain is in name without protocol
     if url_prefix == 0:
-        if "/" in name:
-            hostname, path = name.split("/", 1)
-            path = "/" + path
-        else:
-            hostname = name
-            path = "/"
+        full_url = "https://" + name
     else:
-        # Full URL with prefix
         full_url = prefix + name
-        # Parse out hostname and path
-        if "://" in full_url:
-            without_proto = full_url.split("://", 1)[1]
-        else:
-            without_proto = full_url
-        
-        if "/" in without_proto:
-            hostname, path = without_proto.split("/", 1)
-            path = "/" + path
-        else:
-            hostname = without_proto
-            path = "/"
-    
-    return hostname, path
+
+    parsed = urlparse(full_url)
+    hostname = parsed.netloc or ""
+    path = parsed.path or "/"
+    query = parsed.query or None
+
+    return hostname, path, query
 
 
-def parse_referrer_url(referer_url: Optional[str]) -> tuple[Optional[str], Optional[str]]:
-    """Parse referrer URL into domain and path.
-    
-    Returns (referrer_domain, referrer_path) tuple.
+def parse_referrer_url(referer_url: Optional[str]) -> tuple[Optional[str], Optional[str], Optional[str]]:
+    """Parse referrer URL into domain, path, and query string.
+
+    Returns (referrer_domain, referrer_path, referrer_query) tuple.
     """
     if not referer_url:
-        return None, None
-    
-    # Remove protocol
-    if "://" in referer_url:
-        without_proto = referer_url.split("://", 1)[1]
-    else:
-        without_proto = referer_url
-    
-    # Split domain and path
-    if "/" in without_proto:
-        domain, path = without_proto.split("/", 1)
-        path = "/" + path
-    else:
-        domain = without_proto
-        path = "/"
-    
-    return domain, path
+        return None, None, None
+
+    # Add protocol if missing for urlparse to work correctly
+    if "://" not in referer_url:
+        referer_url = "https://" + referer_url
+
+    parsed = urlparse(referer_url)
+    domain = parsed.netloc or None
+    path = parsed.path or "/"
+    query = parsed.query or None
+
+    return domain, path, query
 
 
 def map_browser(matomo_code: Optional[str]) -> Optional[str]:
