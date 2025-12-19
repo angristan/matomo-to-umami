@@ -1,6 +1,7 @@
 """Migration script to convert Matomo data to Umami SQL."""
 
 import argparse
+import logging
 import re
 import sys
 from datetime import datetime
@@ -8,6 +9,7 @@ from typing import Generator, Optional
 import mysql.connector
 from mysql.connector import Error as MySQLError
 from rich.console import Console
+from rich.logging import RichHandler
 from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn, TimeElapsedColumn, MofNCompleteColumn
 from rich.table import Table
 from .mappings import (
@@ -22,6 +24,27 @@ from .mappings import (
 )
 
 console = Console(stderr=True)
+logger = logging.getLogger(__name__)
+
+
+def setup_logging(verbosity: int = 0) -> None:
+    """Configure logging based on verbosity level.
+
+    Args:
+        verbosity: 0=WARNING, 1=INFO, 2+=DEBUG
+    """
+    level = logging.WARNING
+    if verbosity == 1:
+        level = logging.INFO
+    elif verbosity >= 2:
+        level = logging.DEBUG
+
+    logging.basicConfig(
+        level=level,
+        format="%(message)s",
+        datefmt="[%X]",
+        handlers=[RichHandler(console=console, rich_tracebacks=True, show_path=False)]
+    )
 
 
 class MigrationError(Exception):
@@ -154,9 +177,11 @@ class MatomoToUmamiMigrator:
         Raises:
             DatabaseConnectionError: If connection fails
         """
+        logger.info(f"Connecting to MySQL at {self.mysql_config['host']}:{self.mysql_config['port']}")
         try:
             self.conn = mysql.connector.connect(**self.mysql_config)
             self.cursor = self.conn.cursor(dictionary=True)
+            logger.info("Successfully connected to MySQL database")
         except MySQLError as e:
             error_code = e.errno if hasattr(e, 'errno') else 'unknown'
             if error_code == 1045:  # Access denied
@@ -230,7 +255,9 @@ class MatomoToUmamiMigrator:
         where_sql, params = self._build_session_where(start_date, end_date)
         query = f"SELECT COUNT(*) as cnt FROM piwik_log_visit v WHERE {where_sql}"
         self.cursor.execute(query, params)
-        return self.cursor.fetchone()['cnt']
+        count = self.cursor.fetchone()['cnt']
+        logger.debug(f"Found {count:,} sessions to migrate")
+        return count
 
     def count_events(self, start_date=None, end_date=None) -> int:
         """Count total events to migrate."""
@@ -241,7 +268,9 @@ class MatomoToUmamiMigrator:
             WHERE {where_sql} AND lva.idaction_url IS NOT NULL
         """
         self.cursor.execute(query, params)
-        return self.cursor.fetchone()['cnt']
+        count = self.cursor.fetchone()['cnt']
+        logger.debug(f"Found {count:,} events to migrate")
+        return count
 
     def get_date_range(self, start_date=None, end_date=None) -> dict:
         """Get the actual date range of data to be migrated."""
@@ -622,7 +651,18 @@ def main():
         help="Show migration summary without generating SQL"
     )
 
+    # Verbosity
+    parser.add_argument(
+        "-v", "--verbose",
+        action="count",
+        default=0,
+        help="Increase verbosity (-v for INFO, -vv for DEBUG)"
+    )
+
     args = parser.parse_args()
+
+    # Setup logging based on verbosity
+    setup_logging(args.verbose)
 
     # Parse and validate site mappings
     site_mappings = []
@@ -632,6 +672,10 @@ def main():
         except SiteMappingError as e:
             console.print(f"[red]Error:[/red] {e}", highlight=False)
             sys.exit(1)
+
+    logger.info(f"Configured {len(site_mappings)} site mapping(s)")
+    for mapping in site_mappings:
+        logger.debug(f"  Site {mapping.matomo_idsite} -> {mapping.umami_website_id} ({mapping.domain})")
 
     # Parse dates
     start_date = None

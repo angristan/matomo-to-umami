@@ -31,6 +31,7 @@ This migration tool:
 | Batch processing     | Covered                         |
 | Progress bar         | Covered                         |
 | Dry run preview      | Covered                         |
+| Verbose logging      | Covered                         |
 
 ## What's NOT Covered
 
@@ -192,6 +193,7 @@ migrate \
 | `--output`         | Output SQL file (default: stdout)                  |
 | `--batch-size`     | Rows per INSERT statement (default: 1000)          |
 | `--dry-run`        | Show migration summary without generating SQL      |
+| `-v, --verbose`    | Increase verbosity (-v for INFO, -vv for DEBUG)    |
 
 #### Preview with Dry Run
 
@@ -307,6 +309,8 @@ COMMIT;
 - Access denied: Check your MySQL username and password
 - Cannot connect: Verify the server is running and accessible
 - Unknown database: Check your database name
+
+Use `-v` or `-vv` for more detailed logging when debugging connection issues.
 
 **Invalid site mapping**: The tool validates site mappings and provides helpful error messages:
 
