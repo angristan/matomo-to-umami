@@ -118,9 +118,21 @@ You need to map each Matomo site ID to its corresponding Umami website UUID:
 mysql -h your-matomo-host -u user -p matomo \
   -e "SELECT idsite, name, main_url FROM piwik_site"
 
+# +--------+------------------+-------------------------+
+# | idsite | name             | main_url                |
+# +--------+------------------+-------------------------+
+# |      1 | Example Site     | https://example.com     |
+# |      5 | Blog             | https://blog.example.com|
+# +--------+------------------+-------------------------+
+
 # Get Umami website UUIDs (from Umami dashboard or database)
 psql -h your-umami-host -U user umami \
   -c "SELECT website_id, name, domain FROM website"
+
+#               website_id              |      name      |      domain
+# --------------------------------------+----------------+------------------
+#  a5d41854-bde7-4416-819f-3923ea2b2706 | Example Site   | example.com
+#  3824c584-bc9d-4a9b-aa35-9aa64f797c6f | Blog           | blog.example.com
 ```
 
 #### 2. Generate the migration SQL
