@@ -96,26 +96,47 @@ This means running the migration twice produces identical UUIDs, making the proc
 ### Installation
 
 ```bash
-# Clone the repository
 git clone https://github.com/your-username/matomo-to-umami.git
 cd matomo-to-umami
-
-# Install with uv (recommended)
 uv sync
-
-# Or with pip
-pip install -e .
 ```
 
 ### Usage
 
-#### 1. Identify your site mappings
+> **Important**: Before migrating, run both Matomo and Umami tracking on your websites in parallel for a while. This prevents data gaps during the transition period.
 
-You need to map each Matomo site ID to its corresponding Umami website UUID:
+While the script can connect directly to remote databases, we recommend dumping locally and testing the migration against a local Umami instance first. This lets you verify the data looks correct before importing into production.
+
+#### 1. Start the local environment
+
+```bash
+docker-compose up -d
+
+# Services:
+#   MariaDB (Matomo):  localhost:3307, root/password
+#   PostgreSQL:        localhost:5433, app/password
+#   Umami Dashboard:   http://localhost:3000
+```
+
+#### 2. Load your database dumps
+
+```bash
+# Export from production
+mysqldump -h your-matomo-host -u user -p matomo > dumps/matomo.sql
+pg_dump -h your-umami-host -U user umami > dumps/umami.sql
+
+# Load into local containers
+docker exec -i matomo-mariadb mysql -u root -ppassword matomo < dumps/matomo.sql
+docker exec -i umami-postgres psql -U app -d app < dumps/umami.sql
+```
+
+#### 3. Identify your site mappings
+
+Map each Matomo site ID to its corresponding Umami website UUID:
 
 ```bash
 # Get Matomo site IDs
-mysql -h your-matomo-host -u user -p matomo \
+docker exec -i matomo-mariadb mysql -u root -ppassword matomo \
   -e "SELECT idsite, name, main_url FROM piwik_site"
 
 # +--------+------------------+-------------------------+
@@ -125,8 +146,8 @@ mysql -h your-matomo-host -u user -p matomo \
 # |      5 | Blog             | https://blog.example.com|
 # +--------+------------------+-------------------------+
 
-# Get Umami website UUIDs (from Umami dashboard or database)
-psql -h your-umami-host -U user umami \
+# Get Umami website UUIDs
+docker exec -i umami-postgres psql -U app -d app \
   -c "SELECT website_id, name, domain FROM website"
 
 #               website_id              |      name      |      domain
@@ -135,21 +156,20 @@ psql -h your-umami-host -U user umami \
 #  3824c584-bc9d-4a9b-aa35-9aa64f797c6f | Blog           | blog.example.com
 ```
 
-#### 2. Generate the migration SQL
+#### 4. Generate the migration SQL
 
 ```bash
 migrate \
   --mysql-host localhost \
-  --mysql-port 3306 \
+  --mysql-port 3307 \
   --mysql-user root \
-  --mysql-password your-password \
+  --mysql-password password \
   --mysql-database matomo \
   --site-mapping "1:a5d41854-bde7-4416-819f-3923ea2b2706:example.com" \
   --site-mapping "5:3824c584-bc9d-4a9b-aa35-9aa64f797c6f:blog.example.com" \
-  --start-date 2023-01-01 \
-  --end-date 2023-12-31 \
-  --output migration.sql \
-  --batch-size 1000
+  --start-date 2020-01-01 \
+  --end-date 2024-12-31 \
+  --output migration.sql
 ```
 
 **Parameters:**
@@ -167,138 +187,32 @@ migrate \
 | `--output`         | Output SQL file (default: stdout)                  |
 | `--batch-size`     | Rows per INSERT statement (default: 1000)          |
 
-#### 3. Import into Umami
+#### 5. Import into local Umami and verify
 
 ```bash
-# Review the generated SQL first!
-head -100 migration.sql
-
-# Import into Umami PostgreSQL
-psql -h your-umami-host -U user umami < migration.sql
-```
-
-### Testing the Migration Locally (Recommended)
-
-Before importing into production, **test the migration against a local Umami instance** using the provided Docker Compose setup. This lets you verify the data looks correct in the Umami dashboard.
-
-The workflow is:
-
-1. Export your production Umami database (schema + website definitions)
-2. Import it into the local Docker environment
-3. Generate and import the migration SQL
-4. Verify everything in the local Umami dashboard
-5. Once satisfied, import the migration SQL into production
-
-#### Step 1: Start the local environment
-
-```bash
-# Start MariaDB (for Matomo data) and PostgreSQL + Umami
-docker-compose up -d
-
-# Wait for services to be healthy
-docker-compose ps
-
-# Services:
-#   MariaDB (Matomo):  localhost:3307, root/password
-#   PostgreSQL:        localhost:5433, app/password
-#   Umami Dashboard:   http://localhost:3000
-```
-
-#### Step 2: Load your database dumps
-
-```bash
-# Load your Matomo dump into MariaDB
-docker exec -i matomo-mariadb mysql -u root -ppassword matomo < dumps/matomo.sql
-
-# Load your Umami production dump into PostgreSQL
-# This gives you the schema + existing website definitions (with their UUIDs)
-docker exec -i umami-postgres psql -U app -d app < dumps/umami.sql
-```
-
-> **Tip**: Export your production Umami database with:
->
-> ```bash
-> pg_dump -h your-prod-host -U user umami > dumps/umami.sql
-> ```
-
-#### Step 3: Get your site mappings from the imported data
-
-Since you imported your production Umami dump, the website UUIDs are already there:
-
-```bash
-# List websites and their UUIDs from the imported Umami data
-docker exec -i umami-postgres psql -U app -d app \
-  -c "SELECT website_id, name, domain FROM website"
-
-# List Matomo site IDs
-docker exec -i matomo-mariadb mysql -u root -ppassword matomo \
-  -e "SELECT idsite, name, main_url FROM piwik_site"
-```
-
-Match the Matomo site IDs to the Umami website UUIDs for your `--site-mapping` arguments.
-
-#### Step 4: Generate the migration SQL
-
-```bash
-migrate \
-  --mysql-host localhost \
-  --mysql-port 3307 \
-  --mysql-user root \
-  --mysql-password password \
-  --mysql-database matomo \
-  --site-mapping "1:a5d41854-bde7-4416-819f-3923ea2b2706:example.com" \
-  --site-mapping "5:3824c584-bc9d-4a9b-aa35-9aa64f797c6f:blog.example.com" \
-  --start-date 2020-01-01 \
-  --end-date 2023-12-31 \
-  --output migration.sql
-```
-
-#### Step 5: Import the migration into local Umami
-
-```bash
-# Import the migration SQL (adds sessions + events to existing data)
 docker exec -i umami-postgres psql -U app -d app < migration.sql
-
-# Check row counts
-docker exec -i umami-postgres psql -U app -d app << 'EOF'
-SELECT 'sessions' as table_name, COUNT(*) FROM session
-UNION ALL
-SELECT 'events', COUNT(*) FROM website_event;
-EOF
 ```
 
-#### Step 6: Verify in the Umami dashboard
+Open http://localhost:3000, log in, and verify:
 
-1. Open http://localhost:3000
-2. Log in with your credentials (same as production since you imported the dump)
-3. Select your website
-4. Adjust the date range to cover your migrated data
-5. Verify:
-   - **Pageviews and visits** show up in the overview
-   - **Pages** list shows your URLs correctly
-   - **Referrers** are populated
-   - **Browsers/OS/Devices** breakdown looks reasonable
-   - **Countries** geo data appears (if you had it in Matomo)
+- Pageviews and visits show up in the overview
+- Pages list shows your URLs correctly
+- Referrers, browsers, OS, devices, and countries look reasonable
 
-#### Step 7: Once satisfied, import into production
+#### 6. Import into production
+
+Once satisfied with the local results:
 
 ```bash
-# Import the same migration SQL into your production Umami
 psql -h your-production-host -U user -d umami < migration.sql
 ```
 
-The `ON CONFLICT DO NOTHING` clauses ensure this is safe to run even if some data already exists.
+The `ON CONFLICT DO NOTHING` clauses make this safe to run multiple times.
 
 #### Resetting the local environment
 
-If you need to start fresh:
-
 ```bash
-# Stop and remove containers + volumes
-docker-compose down -v
-
-# Start fresh
-docker-compose up -d
+docker-compose down -v && docker-compose up -d
 ```
 
 ## How the Migration Works (Technical Details)
