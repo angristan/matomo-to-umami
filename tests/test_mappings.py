@@ -133,8 +133,8 @@ class TestMapOs:
     def test_ios(self):
         assert map_os("IOS") == "ios"
 
-    def test_unknown_os_lowercased(self):
-        assert map_os("XXX") == "xxx"
+    def test_unknown_os_returns_unknown(self):
+        assert map_os("XXX") == "unknown"
 
     def test_none(self):
         assert map_os(None) is None
@@ -147,7 +147,7 @@ class TestMapDeviceType:
         assert map_device_type(0) == "desktop"
 
     def test_smartphone(self):
-        assert map_device_type(1) == "smartphone"
+        assert map_device_type(1) == "mobile"  # smartphone maps to mobile
 
     def test_tablet(self):
         assert map_device_type(2) == "tablet"
@@ -311,16 +311,30 @@ class TestExpandedBrowserMappings:
 
 
 class TestExpandedOSMappings:
-    """Tests for expanded OS mappings."""
+    """Tests for OS mappings to Umami-recognized OS names."""
+
+    def test_linux_distros_map_to_linux(self):
+        """Linux distributions all map to linux."""
+        assert map_os("UBT") == "linux"  # Ubuntu
+        assert map_os("FED") == "linux"  # Fedora
+        assert map_os("ARC") == "linux"  # Arch
+        assert map_os("POP") == "linux"  # Pop!_OS
+
+    def test_bsd_variants(self):
+        """BSD variants map appropriately."""
+        assert map_os("FRE") == "linux"  # FreeBSD
+        assert map_os("OPE") == "open-bsd"  # OpenBSD
 
     def test_harmonyos(self):
-        assert map_os("HAR") == "harmonyos"
+        """HarmonyOS maps to android (closest match)."""
+        assert map_os("HAR") == "android"
 
-    def test_arch(self):
-        assert map_os("ARC") == "arch"
+    def test_windows_variants(self):
+        """Windows versions all map to windows."""
+        assert map_os("WI7") == "windows"  # Windows 7
+        assert map_os("W81") == "windows"  # Windows 8.1
 
-    def test_pop_os(self):
-        assert map_os("POP") == "pop-os"
-
-    def test_freebsd(self):
-        assert map_os("FRE") == "freebsd"
+    def test_ios_variants(self):
+        """iOS device types all map to ios."""
+        assert map_os("IPA") == "ios"  # iPad
+        assert map_os("IPH") == "ios"  # iPhone

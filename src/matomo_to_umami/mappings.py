@@ -30,22 +30,23 @@ ACTION_TYPE_CONTENT_PIECE: Final[int] = 14
 ACTION_TYPE_CONTENT_TARGET: Final[int] = 15
 ACTION_TYPE_CONTENT_INTERACTION: Final[int] = 16
 
-# Matomo device type mapping
+# Matomo device type mapping to Umami device names
+# Umami only has: desktop, laptop, mobile, tablet, unknown
 DEVICE_TYPES: Final[dict[int, str]] = {
     0: "desktop",
-    1: "smartphone",
+    1: "mobile",  # smartphone
     2: "tablet",
-    3: "feature phone",
-    4: "console",
-    5: "tv",
-    6: "car browser",
-    7: "smart display",
-    8: "camera",
-    9: "portable media player",
-    10: "phablet",
-    11: "smart speaker",
-    12: "wearable",
-    13: "peripheral",
+    3: "mobile",  # feature phone
+    4: "desktop",  # console
+    5: "desktop",  # tv
+    6: "desktop",  # car browser
+    7: "desktop",  # smart display
+    8: "desktop",  # camera
+    9: "mobile",  # portable media player
+    10: "mobile",  # phablet
+    11: "desktop",  # smart speaker
+    12: "mobile",  # wearable
+    13: "desktop",  # peripheral
 }
 
 # Matomo browser codes to Umami browser names
@@ -118,46 +119,65 @@ BROWSER_MAPPING: Final[dict[str, str]] = {
 
 # Matomo OS codes to Umami OS names
 # Reference: https://github.com/matomo-org/device-detector
+# Umami has icons for: windows, mac-os, linux, chrome-os, android, ios,
+# blackberry-os, windows-mobile, open-bsd, unknown
 OS_MAPPING: Final[dict[str, str]] = {
     # Desktop OS
     "WIN": "windows",
+    "WI7": "windows",  # Windows 7
+    "W81": "windows",  # Windows 8.1
+    "W10": "windows",  # Windows 10
+    "WI1": "windows",  # Windows 11
     "MAC": "mac-os",
     "LIN": "linux",
     "COS": "chrome-os",
     # Mobile OS
     "AND": "android",
     "IOS": "ios",
-    "WPH": "windows-phone",
+    "IPA": "ios",  # iPad
+    "IPH": "ios",  # iPhone
+    "WPH": "windows-mobile",
     "WMO": "windows-mobile",
-    "BLB": "blackberry",
-    "SYM": "symbian",
-    "WEB": "webos",
-    "KAI": "kaios",
-    "HAR": "harmonyos",
-    "FUC": "fuchsia",
-    # Linux distributions
-    "UBT": "ubuntu",
-    "FED": "fedora",
-    "DEB": "debian",
-    "MIN": "mint",
-    "ARC": "arch",
-    "CEN": "centos",
-    "RHL": "red-hat",
-    "SUS": "suse",
-    "GEN": "gentoo",
-    "MAN": "manjaro",
-    "ELE": "elementary",
-    "POP": "pop-os",
+    "WRT": "windows-mobile",  # Windows RT
+    "BLB": "blackberry-os",
+    "SYM": "linux",  # Symbian - no icon, use unknown
+    "WEB": "linux",  # webOS - no icon
+    "KAI": "linux",  # KaiOS - no icon
+    "HAR": "android",  # HarmonyOS - closest is Android
+    "FUC": "linux",  # Fuchsia - no icon
+    "FOS": "linux",  # Firefox OS
+    # Linux distributions (all map to linux)
+    "UBT": "linux",  # Ubuntu
+    "FED": "linux",  # Fedora
+    "DEB": "linux",  # Debian
+    "MIN": "linux",  # Mint
+    "ARC": "linux",  # Arch
+    "CEN": "linux",  # CentOS
+    "RHL": "linux",  # Red Hat
+    "SUS": "linux",  # SUSE
+    "GEN": "linux",  # Gentoo
+    "MAN": "linux",  # Manjaro
+    "ELE": "linux",  # Elementary
+    "POP": "linux",  # Pop!_OS
     # BSD variants
-    "BSD": "bsd",
-    "FRE": "freebsd",
-    "OPE": "openbsd",
-    "NET": "netbsd",
+    "BSD": "linux",  # Generic BSD
+    "FRE": "linux",  # FreeBSD
+    "OPE": "open-bsd",  # OpenBSD
+    "NET": "linux",  # NetBSD
+    # Gaming consoles
+    "PS3": "unknown",  # PlayStation 3
+    "PS4": "unknown",  # PlayStation 4
+    "PS5": "unknown",  # PlayStation 5
+    "XB1": "unknown",  # Xbox One
+    "XBX": "unknown",  # Xbox
+    "WII": "unknown",  # Wii
+    "NDS": "unknown",  # Nintendo DS
     # Other
-    "AMZ": "fire-os",
-    "TIZ": "tizen",
-    "ROS": "ros",
-    "HAI": "haiku",
+    "AMZ": "android",  # Fire OS - based on Android
+    "TIZ": "linux",  # Tizen
+    "ROS": "linux",  # Robot OS
+    "HAI": "linux",  # Haiku
+    "OBS": "linux",  # Other BSD
     "UNK": "unknown",
 }
 
@@ -248,10 +268,14 @@ def map_browser(matomo_code: str | None) -> str | None:
 
 
 def map_os(matomo_code: str | None) -> str | None:
-    """Map Matomo OS code to Umami OS name."""
+    """Map Matomo OS code to Umami OS name.
+
+    Only returns OS names that Umami recognizes (has icons for).
+    Unrecognized OS codes are mapped to "unknown".
+    """
     if not matomo_code:
         return None
-    return OS_MAPPING.get(matomo_code, matomo_code.lower())
+    return OS_MAPPING.get(matomo_code, "unknown")
 
 
 def map_device_type(matomo_type: int | None) -> str | None:
