@@ -337,12 +337,15 @@ class MatomoToUmamiMigrator:
         start_date: datetime | None = None,
         end_date: datetime | None = None,
     ) -> int:
-        """Count total events to migrate."""
+        """Count total events to migrate (pageviews, outlinks, downloads)."""
         where = self._build_event_where(start_date, end_date)
         query = f"""
             SELECT COUNT(*) as cnt
             FROM piwik_log_link_visit_action lva
-            WHERE {where.sql} AND lva.idaction_url IS NOT NULL
+            JOIN piwik_log_action url_action ON lva.idaction_url = url_action.idaction
+            WHERE {where.sql}
+              AND lva.idaction_url IS NOT NULL
+              AND url_action.type IN (1, 2, 3)
         """
         self.cursor.execute(query, where.params)
         result = self.cursor.fetchone()
@@ -409,7 +412,9 @@ class MatomoToUmamiMigrator:
             )
             query = f"""
                 SELECT COUNT(*) as cnt FROM piwik_log_link_visit_action lva
+                JOIN piwik_log_action url_action ON lva.idaction_url = url_action.idaction
                 WHERE {extra_where.sql}
+                  AND url_action.type IN (1, 2, 3)
             """
             self.cursor.execute(query, extra_where.params)
             result = self.cursor.fetchone()
@@ -573,7 +578,8 @@ ON CONFLICT (session_id) DO NOTHING;
         """Generate SQL INSERT statements for website_event."""
         where = self._build_event_where(start_date, end_date)
 
-        # Join with log_action to get URL and page title
+        # Join with log_action to get URL, page title, and action type
+        # Action types: 1=pageview, 2=outlink, 3=download
         query = f"""
             SELECT
                 lva.idlink_va,
@@ -583,6 +589,7 @@ ON CONFLICT (session_id) DO NOTHING;
                 lva.idpageview,
                 url_action.name as url_name,
                 url_action.url_prefix,
+                url_action.type as action_type,
                 title_action.name as page_title,
                 ref_action.name as ref_url,
                 ref_action.url_prefix as ref_url_prefix,
@@ -594,6 +601,7 @@ ON CONFLICT (session_id) DO NOTHING;
             LEFT JOIN piwik_log_visit v ON lva.idvisit = v.idvisit
             WHERE {where.sql}
               AND lva.idaction_url IS NOT NULL
+              AND url_action.type IN (1, 2, 3)
             ORDER BY lva.idlink_va
         """
 
@@ -601,9 +609,11 @@ ON CONFLICT (session_id) DO NOTHING;
 
         yield "-- Website Events (from piwik_log_link_visit_action)"
         yield "-- Maps to Umami website_event table"
+        yield "-- Outlinks and downloads also generate event_data entries"
         yield ""
 
-        batch = []
+        batch: list[str] = []
+        event_data_batch: list[str] = []
         for row in self.cursor:
             mapping = self.get_site_mapping(row["idsite"])
             if not mapping:
@@ -640,6 +650,23 @@ ON CONFLICT (session_id) DO NOTHING;
             else:
                 ref_domain, ref_path, ref_query = None, None, None
 
+            # Map Matomo action type to Umami event_type and event_name
+            # Matomo: 1=pageview, 2=outlink, 3=download
+            # Umami: event_type 1=pageview, 2=custom event
+            action_type = row["action_type"]
+            if action_type == 1:
+                event_type = "1"
+                event_name = "NULL"
+            elif action_type == 2:
+                event_type = "2"
+                event_name = "'outlink'"
+            elif action_type == 3:
+                event_type = "2"
+                event_name = "'download'"
+            else:
+                event_type = "1"
+                event_name = "NULL"
+
             values = (
                 f"'{event_id}'",
                 f"'{mapping.umami_website_id}'",
@@ -651,13 +678,40 @@ ON CONFLICT (session_id) DO NOTHING;
                 escape_sql_string(ref_query, 500),
                 escape_sql_string(ref_domain, 500),
                 escape_sql_string(row["page_title"], 500),
-                "1",  # event_type = pageview
-                "NULL",  # event_name
+                event_type,
+                event_name,
                 f"'{visit_id}'",
                 "NULL",  # tag
                 escape_sql_string(hostname, 100),
             )
             batch.append(f"({', '.join(values)})")
+
+            # For outlinks and downloads, also store the URL as event_data
+            if action_type in (2, 3):
+                # Build full URL for event_data using original Matomo URL
+                # (hostname, url_path, url_query already parsed from Matomo URL)
+                full_url = ""
+                if hostname:
+                    full_url = f"https://{hostname}"
+                full_url += url_path or ""
+                if url_query:
+                    full_url += f"?{url_query}"
+
+                event_data_id = generate_uuid_from_matomo_id(
+                    row["idlink_va"], "event_data"
+                )
+                event_data_values = (
+                    f"'{event_data_id}'",
+                    f"'{mapping.umami_website_id}'",
+                    f"'{event_id}'",
+                    "'url'",  # data_key
+                    escape_sql_string(full_url, 500),  # string_value
+                    "NULL",  # number_value
+                    "NULL",  # date_value
+                    "1",  # data_type = string
+                    format_timestamp(row["server_time"]),
+                )
+                event_data_batch.append(f"({', '.join(event_data_values)})")
 
             if progress and task_id is not None:
                 progress.advance(task_id)
@@ -666,8 +720,14 @@ ON CONFLICT (session_id) DO NOTHING;
                 yield self._format_event_insert(batch)
                 batch = []
 
+            if len(event_data_batch) >= self.batch_size:
+                yield self._format_event_data_insert(event_data_batch)
+                event_data_batch = []
+
         if batch:
             yield self._format_event_insert(batch)
+        if event_data_batch:
+            yield self._format_event_data_insert(event_data_batch)
 
     def _format_event_insert(self, values: list[str]) -> str:
         """Format a batch INSERT for events."""
@@ -675,6 +735,14 @@ ON CONFLICT (session_id) DO NOTHING;
 VALUES
 {",".join(values)}
 ON CONFLICT (event_id) DO NOTHING;
+"""
+
+    def _format_event_data_insert(self, values: list[str]) -> str:
+        """Format a batch INSERT for event_data (outlink/download URLs)."""
+        return f"""INSERT INTO event_data (event_data_id, website_id, website_event_id, data_key, string_value, number_value, date_value, data_type, created_at)
+VALUES
+{",".join(values)}
+ON CONFLICT (event_data_id) DO NOTHING;
 """
 
     def generate_migration_sql(

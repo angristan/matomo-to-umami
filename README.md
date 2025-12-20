@@ -7,43 +7,44 @@ A Python tool to migrate analytics data from Matomo (MySQL/MariaDB) to Umami (Po
 This migration tool:
 
 1. **Extracts sessions** from Matomo's `piwik_log_visit` table and converts them to Umami's `session` table format
-2. **Extracts pageview events** from Matomo's `piwik_log_link_visit_action` table (joined with `piwik_log_action`) and converts them to Umami's `website_event` table format
+2. **Extracts events** from Matomo's `piwik_log_link_visit_action` table (joined with `piwik_log_action`) and converts them to Umami's `website_event` table format, including pageviews, outlinks, and downloads
 3. **Generates deterministic UUIDs** using UUID v5 so re-running the migration produces identical IDs
 4. **Outputs SQL files** with `ON CONFLICT DO NOTHING` for safe, idempotent imports
 
 ## What's Covered
 
-| Feature              | Status                          |
-| -------------------- | ------------------------------- |
-| Session/visitor data | Covered                         |
-| Pageview events      | Covered                         |
-| Browser detection    | Covered (with code mapping)     |
-| OS detection         | Covered (with code mapping)     |
-| Device type          | Covered (desktop/mobile/tablet) |
-| Screen resolution    | Covered                         |
-| Language             | Covered                         |
-| Country/Region/City  | Covered                         |
-| Page URLs            | Covered                         |
-| Page titles          | Covered                         |
-| Referrer URLs        | Covered (with fallback logic)   |
-| Multi-site support   | Covered                         |
-| Date range filtering | Covered                         |
-| Batch processing     | Covered                         |
-| Progress bar         | Covered                         |
-| Dry run preview      | Covered                         |
-| Verbose logging      | Covered                         |
+| Feature              | Status                                    |
+| -------------------- | ----------------------------------------- |
+| Session/visitor data | Covered                                   |
+| Pageview events      | Covered                                   |
+| Outlink clicks       | Covered (as custom event `outlink`)       |
+| Download clicks      | Covered (as custom event `download`)      |
+| Browser detection    | Covered (with code mapping)               |
+| OS detection         | Covered (with code mapping)               |
+| Device type          | Covered (desktop/mobile/tablet)           |
+| Screen resolution    | Covered                                   |
+| Language             | Covered                                   |
+| Country/Region/City  | Covered                                   |
+| Page URLs            | Covered                                   |
+| Page titles          | Covered                                   |
+| Referrer URLs        | Covered (with fallback logic)             |
+| Multi-site support   | Covered                                   |
+| Date range filtering | Covered                                   |
+| Batch processing     | Covered                                   |
+| Progress bar         | Covered                                   |
+| Dry run preview      | Covered                                   |
+| Verbose logging      | Covered                                   |
 
 ## What's NOT Covered
 
-| Feature                | Reason                                     |
-| ---------------------- | ------------------------------------------ |
-| Custom events          | Only pageviews (event_type=1) are migrated |
-| E-commerce/Goals       | Umami has different tracking model         |
-| Site search data       | Not mapped                                 |
-| Conversion tracking    | Different architecture                     |
-| URL query parameters   | Stored separately in Umami, not extracted  |
-| Real-time data         | Only historical batch migration            |
-| User accounts/segments | Not applicable                             |
+| Feature                | Reason                                                |
+| ---------------------- | ----------------------------------------------------- |
+| Custom Matomo events   | Only pageviews, outlinks, and downloads are migrated  |
+| E-commerce/Goals       | Umami has different tracking model                    |
+| Site search data       | Not mapped                                            |
+| Conversion tracking    | Different architecture                                |
+| Real-time data         | Only historical batch migration                       |
+| User accounts/segments | Not applicable                                        |
 
 ## How It Works
 
@@ -259,13 +260,17 @@ docker-compose down -v && docker-compose up -d
 
 ### Event Migration
 
-1. Query `piwik_log_link_visit_action` joined with `piwik_log_action`
+1. Query `piwik_log_link_visit_action` joined with `piwik_log_action`, filtered to action types 1, 2, 3
 2. For each action:
    - Generate UUID v5 from `idlink_va`
    - Parse URL using Matomo's prefix system (0=none, 1=http://, 2=https://, 3=https://www.)
    - Extract referrer from action or fall back to visit-level referrer
-   - Set event_type=1 (pageview)
-3. Generate batched INSERT statements
+   - Map Matomo action type to Umami event:
+     - Type 1 (pageview) → `event_type=1`
+     - Type 2 (outlink) → `event_type=2`, `event_name='outlink'`
+     - Type 3 (download) → `event_type=2`, `event_name='download'`
+   - For outlinks and downloads, also generate `event_data` record with the URL
+3. Generate batched INSERT statements for both `website_event` and `event_data` tables
 
 ### SQL Output Format
 
@@ -296,7 +301,7 @@ COMMIT;
 
 ## Limitations and Caveats
 
-1. **Pageviews only**: Custom events, goals, and e-commerce data are not migrated
+1. **Limited event types**: Only pageviews, outlinks, and downloads are migrated. Custom Matomo events, goals, and e-commerce data are not supported.
 2. **Historical data**: This is a one-time batch migration, not continuous sync
 3. **Tracking differences**: Matomo and Umami count sessions differently, so numbers won't match exactly
 4. **No rollback**: The tool generates SQL; there's no built-in rollback mechanism

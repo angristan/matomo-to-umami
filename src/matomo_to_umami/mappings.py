@@ -183,8 +183,13 @@ def parse_matomo_url(name: str, url_prefix: int | None) -> tuple[str, str, str |
 
     # Reconstruct full URL for parsing
     # Prefix 0 means domain is in name without protocol
+    # BUT outlinks/downloads store full URL with protocol in name (prefix NULL/0)
     if url_prefix == 0:
-        full_url = "https://" + name
+        # Check if name already has a protocol
+        if name.startswith(("http://", "https://")):
+            full_url = name
+        else:
+            full_url = "https://" + name
     else:
         full_url = prefix + name
 
