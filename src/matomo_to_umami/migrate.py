@@ -531,7 +531,16 @@ class MatomoToUmamiMigrator:
             screen = truncate_field(row["config_resolution"], 11)
             language = truncate_field(row["location_browser_lang"], 35)
             country = row["location_country"][:2].upper() if row["location_country"] else None
-            region = truncate_field(row["location_region"], 20)
+            # Region should be in {country}-{region} format for Umami
+            raw_region = row["location_region"]
+            if raw_region and country:
+                if "-" not in raw_region:
+                    region = f"{country}-{raw_region}"
+                else:
+                    region = raw_region
+            else:
+                region = None
+            region = truncate_field(region, 20)
             city = truncate_field(row["location_city"], 50)
 
             values = (
