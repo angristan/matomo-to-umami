@@ -530,7 +530,7 @@ class MatomoToUmamiMigrator:
             device = truncate_field(map_device_type(row["config_device_type"]), 20)
             screen = truncate_field(row["config_resolution"], 11)
             language = truncate_field(row["location_browser_lang"], 35)
-            country = row["location_country"][:2] if row["location_country"] else None
+            country = row["location_country"][:2].upper() if row["location_country"] else None
             region = truncate_field(row["location_region"], 20)
             city = truncate_field(row["location_city"], 50)
 
