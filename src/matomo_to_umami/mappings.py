@@ -50,60 +50,70 @@ DEVICE_TYPES: Final[dict[int, str]] = {
 
 # Matomo browser codes to Umami browser names
 # Reference: https://github.com/matomo-org/device-detector
+# Only browsers with icons in Umami (public/images/browser/) are mapped
+# Unrecognized browsers will be mapped to "unknown"
 BROWSER_MAPPING: Final[dict[str, str]] = {
     # Major browsers
     "CH": "chrome",
+    "CR": "chrome",  # Chromium
     "FF": "firefox",
     "SF": "safari",
     "IE": "ie",
     "ED": "edge",
     "OP": "opera",
-    # Mobile variants
-    "CM": "chrome-mobile",
-    "FM": "firefox-mobile",
-    "MF": "firefox-mobile",
-    "SM": "safari-mobile",
-    "AN": "android-browser",
-    "SB": "samsung-browser",
-    "MI": "miui-browser",
-    # Alternative browsers
+    # Mobile variants (map to base browser or specific mobile icon)
+    "CM": "chrome",  # Chrome Mobile
+    "CI": "crios",  # Chrome iOS
+    "FM": "firefox",  # Firefox Mobile
+    "MF": "firefox",  # Firefox Mobile
+    "FI": "fxios",  # Firefox iOS
+    "SM": "safari",  # Safari Mobile
+    "AN": "android",  # Android Browser
+    "SB": "samsung",  # Samsung Browser
+    "MI": "miui",  # MIUI Browser
+    # Firefox-based browsers (map to firefox)
+    "PS": "firefox",  # Pale Moon
+    "F1": "firefox",  # Firefox Focus
+    "FK": "firefox",  # Firefox Klar
+    "WA": "firefox",  # Waterfox
+    "LB": "firefox",  # LibreWolf
+    "FL": "firefox",  # Floorp
+    "TH": "firefox",  # Tor Browser
+    # Chromium-based browsers (map to chrome)
+    "VI": "chrome",  # Vivaldi
+    "AR": "chrome",  # Arc
+    "DU": "chrome",  # DuckDuckGo
+    "CC": "chrome",  # Coc Coc
+    "CO": "chrome",  # CoolNovo
+    "IR": "chrome",  # Iron
+    "CD": "chrome",  # Comodo Dragon
+    "UR": "chrome",  # Ur Browser
+    "WH": "chrome",  # Whale
+    # Opera-based browsers (also Chromium-based)
+    "OM": "opera",  # Opera Mobile
+    # Alternative browsers (only those with Umami icons)
     "BR": "brave",
-    "VI": "vivaldi",
-    "AR": "arc",
-    "WH": "whale",
-    "YA": "yandex",
-    "QQ": "qq-browser",
-    "UC": "uc-browser",
-    "BD": "baidu",
-    "MX": "maxthon",
-    "SL": "sleipnir",
-    "KO": "konqueror",
-    "EP": "epiphany",
-    "PS": "pale-moon",
-    "WA": "waterfox",
-    "FL": "floorp",
-    "LB": "librewolf",
-    "TH": "tor",
-    "DU": "duckduckgo",
-    # WebViews and embedded
-    "CW": "chrome-webview",
-    "WV": "webview",
-    "FB": "facebook-browser",
-    "IG": "instagram-browser",
-    "TT": "tiktok-browser",
-    "LI": "linkedin-browser",
-    "TW": "twitter-browser",
-    "SN": "snapchat-browser",
-    # Headless/Automation
-    "HC": "headless-chrome",
-    "PH": "phantomjs",
-    "PP": "puppeteer",
-    # Legacy browsers
-    "NS": "netscape",
-    "MO": "mosaic",
-    "NE": "netfront",
-    "OB": "obigo",
+    "YA": "yandexbrowser",
     "OI": "opera-mini",
+    "SI": "silk",  # Amazon Silk
+    "BB": "blackberry",
+    "AO": "aol",
+    "KT": "kakaotalk",
+    "CU": "curl",
+    # WebViews and embedded
+    "CW": "chromium-webview",
+    "CV": "chromium-webview",
+    "WV": "android-webview",
+    "AW": "android-webview",
+    "IW": "ios-webview",
+    "FB": "facebook",
+    "IG": "instagram",
+    # Headless/Automation (map to base browser)
+    "HC": "chrome",  # Headless Chrome
+    "PP": "chrome",  # Puppeteer (uses Chromium)
+    # Edge variants
+    "EI": "edge-ios",
+    "EC": "edge-chromium",
 }
 
 # Matomo OS codes to Umami OS names
@@ -224,10 +234,14 @@ def parse_referrer_url(
 
 
 def map_browser(matomo_code: str | None) -> str | None:
-    """Map Matomo browser code to Umami browser name."""
+    """Map Matomo browser code to Umami browser name.
+
+    Only returns browser names that Umami recognizes (has icons for).
+    Unrecognized browsers are mapped to "unknown".
+    """
     if not matomo_code:
         return None
-    return BROWSER_MAPPING.get(matomo_code, matomo_code.lower())
+    return BROWSER_MAPPING.get(matomo_code, "unknown")
 
 
 def map_os(matomo_code: str | None) -> str | None:

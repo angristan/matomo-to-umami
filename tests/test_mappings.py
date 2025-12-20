@@ -106,10 +106,10 @@ class TestMapBrowser:
         assert map_browser("SF") == "safari"
 
     def test_chrome_mobile(self):
-        assert map_browser("CM") == "chrome-mobile"
+        assert map_browser("CM") == "chrome"  # Maps to base browser
 
-    def test_unknown_browser_lowercased(self):
-        assert map_browser("XX") == "xx"
+    def test_unknown_browser_returns_unknown(self):
+        assert map_browser("XX") == "unknown"
 
     def test_none(self):
         assert map_browser(None) is None
@@ -270,22 +270,44 @@ class TestValidateSiteMapping:
 
 
 class TestExpandedBrowserMappings:
-    """Tests for expanded browser mappings."""
+    """Tests for browser mappings to Umami-recognized browsers."""
 
     def test_brave(self):
         assert map_browser("BR") == "brave"
 
-    def test_vivaldi(self):
-        assert map_browser("VI") == "vivaldi"
+    def test_samsung(self):
+        assert map_browser("SB") == "samsung"
 
-    def test_arc(self):
-        assert map_browser("AR") == "arc"
+    def test_opera_mini(self):
+        assert map_browser("OI") == "opera-mini"
 
-    def test_duckduckgo(self):
-        assert map_browser("DU") == "duckduckgo"
+    def test_facebook(self):
+        assert map_browser("FB") == "facebook"
 
-    def test_tor(self):
-        assert map_browser("TH") == "tor"
+    def test_instagram(self):
+        assert map_browser("IG") == "instagram"
+
+    def test_yandex(self):
+        assert map_browser("YA") == "yandexbrowser"
+
+    def test_chromium(self):
+        assert map_browser("CR") == "chrome"
+
+    def test_chromium_based_browsers(self):
+        """Chromium-based browsers map to chrome."""
+        assert map_browser("VI") == "chrome"  # Vivaldi
+        assert map_browser("AR") == "chrome"  # Arc
+        assert map_browser("DU") == "chrome"  # DuckDuckGo
+
+    def test_unrecognized_browsers_return_unknown(self):
+        """Browsers not in our mapping return 'unknown'."""
+        assert map_browser("XX") == "unknown"  # Unknown code
+
+    def test_firefox_based_browsers(self):
+        """Firefox-based browsers map to firefox."""
+        assert map_browser("PS") == "firefox"  # Pale Moon
+        assert map_browser("F1") == "firefox"  # Firefox Focus
+        assert map_browser("TH") == "firefox"  # Tor Browser
 
 
 class TestExpandedOSMappings:
