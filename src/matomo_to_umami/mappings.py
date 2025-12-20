@@ -2,10 +2,11 @@
 
 import uuid
 from dataclasses import dataclass
+from typing import Final
 from urllib.parse import urlparse
 
 # Matomo URL prefix mapping
-URL_PREFIXES = {
+URL_PREFIXES: Final[dict[int, str]] = {
     0: "",  # Legacy - domain included in name, no protocol
     1: "http://",
     2: "https://",
@@ -13,24 +14,24 @@ URL_PREFIXES = {
 }
 
 # Matomo action types
-ACTION_TYPE_URL = 1
-ACTION_TYPE_OUTLINK = 2
-ACTION_TYPE_DOWNLOAD = 3
-ACTION_TYPE_PAGE_TITLE = 4
-ACTION_TYPE_ECOMMERCE_ITEM_SKU = 5
-ACTION_TYPE_ECOMMERCE_ITEM_NAME = 6
-ACTION_TYPE_ECOMMERCE_ITEM_CATEGORY = 7
-ACTION_TYPE_SITE_SEARCH = 8
-ACTION_TYPE_EVENT_CATEGORY = 10
-ACTION_TYPE_EVENT_ACTION = 11
-ACTION_TYPE_EVENT_NAME = 12
-ACTION_TYPE_CONTENT_NAME = 13
-ACTION_TYPE_CONTENT_PIECE = 14
-ACTION_TYPE_CONTENT_TARGET = 15
-ACTION_TYPE_CONTENT_INTERACTION = 16
+ACTION_TYPE_URL: Final[int] = 1
+ACTION_TYPE_OUTLINK: Final[int] = 2
+ACTION_TYPE_DOWNLOAD: Final[int] = 3
+ACTION_TYPE_PAGE_TITLE: Final[int] = 4
+ACTION_TYPE_ECOMMERCE_ITEM_SKU: Final[int] = 5
+ACTION_TYPE_ECOMMERCE_ITEM_NAME: Final[int] = 6
+ACTION_TYPE_ECOMMERCE_ITEM_CATEGORY: Final[int] = 7
+ACTION_TYPE_SITE_SEARCH: Final[int] = 8
+ACTION_TYPE_EVENT_CATEGORY: Final[int] = 10
+ACTION_TYPE_EVENT_ACTION: Final[int] = 11
+ACTION_TYPE_EVENT_NAME: Final[int] = 12
+ACTION_TYPE_CONTENT_NAME: Final[int] = 13
+ACTION_TYPE_CONTENT_PIECE: Final[int] = 14
+ACTION_TYPE_CONTENT_TARGET: Final[int] = 15
+ACTION_TYPE_CONTENT_INTERACTION: Final[int] = 16
 
 # Matomo device type mapping
-DEVICE_TYPES = {
+DEVICE_TYPES: Final[dict[int, str]] = {
     0: "desktop",
     1: "smartphone",
     2: "tablet",
@@ -49,7 +50,7 @@ DEVICE_TYPES = {
 
 # Matomo browser codes to Umami browser names
 # Reference: https://github.com/matomo-org/device-detector
-BROWSER_MAPPING = {
+BROWSER_MAPPING: Final[dict[str, str]] = {
     # Major browsers
     "CH": "chrome",
     "FF": "firefox",
@@ -107,7 +108,7 @@ BROWSER_MAPPING = {
 
 # Matomo OS codes to Umami OS names
 # Reference: https://github.com/matomo-org/device-detector
-OS_MAPPING = {
+OS_MAPPING: Final[dict[str, str]] = {
     # Desktop OS
     "WIN": "windows",
     "MAC": "mac-os",

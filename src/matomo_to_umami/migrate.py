@@ -5,10 +5,14 @@ import logging
 import re
 import sys
 from collections.abc import Generator
+from dataclasses import dataclass
 from datetime import datetime
+from typing import Any, TextIO
 
 import mysql.connector
 from mysql.connector import Error as MySQLError
+from mysql.connector.connection import MySQLConnection
+from mysql.connector.cursor import MySQLCursorDict
 from rich.console import Console
 from rich.logging import RichHandler
 from rich.progress import (
@@ -16,6 +20,7 @@ from rich.progress import (
     MofNCompleteColumn,
     Progress,
     SpinnerColumn,
+    TaskID,
     TextColumn,
     TimeElapsedColumn,
 )
@@ -31,6 +36,21 @@ from .mappings import (
     parse_referrer_url,
     truncate_field,
 )
+
+
+@dataclass(frozen=True)
+class WhereClause:
+    """Represents a parameterized WHERE clause."""
+
+    sql: str
+    params: tuple[Any, ...]
+
+    def with_extra_condition(self, condition: str, param: Any) -> WhereClause:
+        """Return a new WhereClause with an additional condition."""
+        return WhereClause(
+            sql=f"{self.sql} AND {condition}",
+            params=(*self.params, param),
+        )
 
 console = Console(stderr=True)
 logger = logging.getLogger(__name__)
@@ -161,6 +181,9 @@ def format_timestamp(dt: datetime | None) -> str:
 class MatomoToUmamiMigrator:
     """Handles migration from Matomo to Umami."""
 
+    conn: MySQLConnection
+    cursor: MySQLCursorDict
+
     def __init__(
         self,
         mysql_host: str = "localhost",
@@ -168,21 +191,23 @@ class MatomoToUmamiMigrator:
         mysql_user: str = "root",
         mysql_password: str = "password",
         mysql_database: str = "matomo",
-        site_mappings: list[SiteMapping] = None,
+        site_mappings: list[SiteMapping] | None = None,
         batch_size: int = 1000,
-    ):
-        self.mysql_config = {
+    ) -> None:
+        self.mysql_config: dict[str, Any] = {
             "host": mysql_host,
             "port": mysql_port,
             "user": mysql_user,
             "password": mysql_password,
             "database": mysql_database,
         }
-        self.site_mappings = site_mappings or []
-        self.batch_size = batch_size
-        self._site_map = {m.matomo_idsite: m for m in self.site_mappings}
+        self.site_mappings: list[SiteMapping] = site_mappings or []
+        self.batch_size: int = batch_size
+        self._site_map: dict[int, SiteMapping] = {
+            m.matomo_idsite: m for m in self.site_mappings
+        }
 
-    def connect(self):
+    def connect(self) -> None:
         """Connect to Matomo MySQL database.
 
         Raises:
@@ -216,7 +241,7 @@ class MatomoToUmamiMigrator:
             else:
                 raise DatabaseConnectionError(f"Failed to connect to MySQL: {e}") from e
 
-    def close(self):
+    def close(self) -> None:
         """Close database connection."""
         if hasattr(self, "cursor"):
             self.cursor.close()
@@ -227,80 +252,132 @@ class MatomoToUmamiMigrator:
         """Get Umami website ID for a Matomo site ID."""
         return self._site_map.get(idsite)
 
-    def _build_session_where(self, start_date, end_date):
-        """Build WHERE clause and params for session queries."""
-        where_clauses = ["1=1"]
-        params = []
-        if self.site_mappings:
-            site_ids = [m.matomo_idsite for m in self.site_mappings]
-            placeholders = ", ".join(["%s"] * len(site_ids))
-            where_clauses.append(f"v.idsite IN ({placeholders})")
-            params.extend(site_ids)
-        if start_date:
-            where_clauses.append("v.visit_first_action_time >= %s")
-            params.append(start_date)
-        if end_date:
-            where_clauses.append("v.visit_first_action_time < %s")
-            params.append(end_date)
-        return " AND ".join(where_clauses), params
+    def _build_session_where(
+        self,
+        start_date: datetime | None,
+        end_date: datetime | None,
+    ) -> WhereClause:
+        """Build WHERE clause and params for session queries.
 
-    def _build_event_where(self, start_date, end_date):
-        """Build WHERE clause and params for event queries."""
-        where_clauses = ["1=1"]
-        params = []
-        if self.site_mappings:
-            site_ids = [m.matomo_idsite for m in self.site_mappings]
-            placeholders = ", ".join(["%s"] * len(site_ids))
-            where_clauses.append(f"lva.idsite IN ({placeholders})")
-            params.extend(site_ids)
-        if start_date:
-            where_clauses.append("lva.server_time >= %s")
-            params.append(start_date)
-        if end_date:
-            where_clauses.append("lva.server_time < %s")
-            params.append(end_date)
-        return " AND ".join(where_clauses), params
+        Args:
+            start_date: Optional start date filter (inclusive)
+            end_date: Optional end date filter (exclusive)
 
-    def count_sessions(self, start_date=None, end_date=None) -> int:
+        Returns:
+            WhereClause with parameterized SQL and parameter tuple
+        """
+        where_parts: list[str] = ["1=1"]
+        params: list[Any] = []
+
+        if self.site_mappings:
+            site_ids = tuple(m.matomo_idsite for m in self.site_mappings)
+            placeholders = ", ".join(["%s"] * len(site_ids))
+            where_parts.append(f"v.idsite IN ({placeholders})")
+            params.extend(site_ids)
+
+        if start_date is not None:
+            where_parts.append("v.visit_first_action_time >= %s")
+            params.append(start_date)
+
+        if end_date is not None:
+            where_parts.append("v.visit_first_action_time < %s")
+            params.append(end_date)
+
+        return WhereClause(sql=" AND ".join(where_parts), params=tuple(params))
+
+    def _build_event_where(
+        self,
+        start_date: datetime | None,
+        end_date: datetime | None,
+    ) -> WhereClause:
+        """Build WHERE clause and params for event queries.
+
+        Args:
+            start_date: Optional start date filter (inclusive)
+            end_date: Optional end date filter (exclusive)
+
+        Returns:
+            WhereClause with parameterized SQL and parameter tuple
+        """
+        where_parts: list[str] = ["1=1"]
+        params: list[Any] = []
+
+        if self.site_mappings:
+            site_ids = tuple(m.matomo_idsite for m in self.site_mappings)
+            placeholders = ", ".join(["%s"] * len(site_ids))
+            where_parts.append(f"lva.idsite IN ({placeholders})")
+            params.extend(site_ids)
+
+        if start_date is not None:
+            where_parts.append("lva.server_time >= %s")
+            params.append(start_date)
+
+        if end_date is not None:
+            where_parts.append("lva.server_time < %s")
+            params.append(end_date)
+
+        return WhereClause(sql=" AND ".join(where_parts), params=tuple(params))
+
+    def count_sessions(
+        self,
+        start_date: datetime | None = None,
+        end_date: datetime | None = None,
+    ) -> int:
         """Count total sessions to migrate."""
-        where_sql, params = self._build_session_where(start_date, end_date)
-        query = f"SELECT COUNT(*) as cnt FROM piwik_log_visit v WHERE {where_sql}"
-        self.cursor.execute(query, params)
-        count = self.cursor.fetchone()["cnt"]
+        where = self._build_session_where(start_date, end_date)
+        query = f"SELECT COUNT(*) as cnt FROM piwik_log_visit v WHERE {where.sql}"
+        self.cursor.execute(query, where.params)
+        result = self.cursor.fetchone()
+        count: int = result["cnt"] if result else 0
         logger.debug(f"Found {count:,} sessions to migrate")
         return count
 
-    def count_events(self, start_date=None, end_date=None) -> int:
+    def count_events(
+        self,
+        start_date: datetime | None = None,
+        end_date: datetime | None = None,
+    ) -> int:
         """Count total events to migrate."""
-        where_sql, params = self._build_event_where(start_date, end_date)
+        where = self._build_event_where(start_date, end_date)
         query = f"""
             SELECT COUNT(*) as cnt
             FROM piwik_log_link_visit_action lva
-            WHERE {where_sql} AND lva.idaction_url IS NOT NULL
+            WHERE {where.sql} AND lva.idaction_url IS NOT NULL
         """
-        self.cursor.execute(query, params)
-        count = self.cursor.fetchone()["cnt"]
+        self.cursor.execute(query, where.params)
+        result = self.cursor.fetchone()
+        count: int = result["cnt"] if result else 0
         logger.debug(f"Found {count:,} events to migrate")
         return count
 
-    def get_date_range(self, start_date=None, end_date=None) -> dict:
+    def get_date_range(
+        self,
+        start_date: datetime | None = None,
+        end_date: datetime | None = None,
+    ) -> dict[str, datetime | None]:
         """Get the actual date range of data to be migrated."""
-        where_sql, params = self._build_session_where(start_date, end_date)
+        where = self._build_session_where(start_date, end_date)
         query = f"""
             SELECT
                 MIN(v.visit_first_action_time) as min_date,
                 MAX(v.visit_first_action_time) as max_date
             FROM piwik_log_visit v
-            WHERE {where_sql}
+            WHERE {where.sql}
         """
-        self.cursor.execute(query, params)
+        self.cursor.execute(query, where.params)
         result = self.cursor.fetchone()
-        return {
-            "min_date": result["min_date"],
-            "max_date": result["max_date"],
-        }
+        if result:
+            return {
+                "min_date": result["min_date"],
+                "max_date": result["max_date"],
+            }
+        return {"min_date": None, "max_date": None}
 
-    def get_summary(self, start_date=None, end_date=None) -> dict:
+    def get_summary(
+        self,
+        start_date: datetime | None = None,
+        end_date: datetime | None = None,
+    ) -> dict[str, Any]:
         """Get a summary of data to be migrated.
 
         Returns:
@@ -311,23 +388,32 @@ class MatomoToUmamiMigrator:
         date_range = self.get_date_range(start_date, end_date)
 
         # Get per-site breakdown
-        site_breakdown = []
+        site_breakdown: list[dict[str, Any]] = []
         for mapping in self.site_mappings:
-            where_sql, params = self._build_session_where(start_date, end_date)
+            session_where = self._build_session_where(start_date, end_date)
+            extra_where = session_where.with_extra_condition(
+                "v.idsite = %s", mapping.matomo_idsite
+            )
             query = f"""
                 SELECT COUNT(*) as cnt FROM piwik_log_visit v
-                WHERE {where_sql} AND v.idsite = %s
+                WHERE {extra_where.sql}
             """
-            self.cursor.execute(query, params + [mapping.matomo_idsite])
-            site_sessions = self.cursor.fetchone()["cnt"]
+            self.cursor.execute(query, extra_where.params)
+            result = self.cursor.fetchone()
+            site_sessions: int = result["cnt"] if result else 0
 
-            where_sql, params = self._build_event_where(start_date, end_date)
+            event_where = self._build_event_where(start_date, end_date)
+            extra_where = event_where.with_extra_condition(
+                "lva.idsite = %s AND lva.idaction_url IS NOT NULL",
+                mapping.matomo_idsite,
+            )
             query = f"""
                 SELECT COUNT(*) as cnt FROM piwik_log_link_visit_action lva
-                WHERE {where_sql} AND lva.idsite = %s AND lva.idaction_url IS NOT NULL
+                WHERE {extra_where.sql}
             """
-            self.cursor.execute(query, params + [mapping.matomo_idsite])
-            site_events = self.cursor.fetchone()["cnt"]
+            self.cursor.execute(query, extra_where.params)
+            result = self.cursor.fetchone()
+            site_events: int = result["cnt"] if result else 0
 
             site_breakdown.append(
                 {
@@ -346,7 +432,11 @@ class MatomoToUmamiMigrator:
             "sites": site_breakdown,
         }
 
-    def print_summary(self, start_date=None, end_date=None) -> dict:
+    def print_summary(
+        self,
+        start_date: datetime | None = None,
+        end_date: datetime | None = None,
+    ) -> dict[str, Any]:
         """Print a formatted summary table and return the summary data."""
         summary = self.get_summary(start_date, end_date)
 
@@ -391,10 +481,10 @@ class MatomoToUmamiMigrator:
         start_date: datetime | None = None,
         end_date: datetime | None = None,
         progress: Progress | None = None,
-        task_id=None,
+        task_id: TaskID | None = None,
     ) -> Generator[str]:
         """Generate SQL INSERT statements for sessions."""
-        where_sql, params = self._build_session_where(start_date, end_date)
+        where = self._build_session_where(start_date, end_date)
 
         query = f"""
             SELECT
@@ -411,11 +501,11 @@ class MatomoToUmamiMigrator:
                 v.location_region,
                 v.location_city
             FROM piwik_log_visit v
-            WHERE {where_sql}
+            WHERE {where.sql}
             ORDER BY v.idvisit
         """
 
-        self.cursor.execute(query, params)
+        self.cursor.execute(query, where.params)
 
         yield "-- Sessions (from piwik_log_visit)"
         yield "-- Maps to Umami session table"
@@ -478,14 +568,14 @@ ON CONFLICT (session_id) DO NOTHING;
         start_date: datetime | None = None,
         end_date: datetime | None = None,
         progress: Progress | None = None,
-        task_id=None,
+        task_id: TaskID | None = None,
     ) -> Generator[str]:
         """Generate SQL INSERT statements for website_event."""
-        where_sql, params = self._build_event_where(start_date, end_date)
+        where = self._build_event_where(start_date, end_date)
 
         # Join with log_action to get URL and page title
         query = f"""
-            SELECT 
+            SELECT
                 lva.idlink_va,
                 lva.idvisit,
                 lva.idsite,
@@ -502,12 +592,12 @@ ON CONFLICT (session_id) DO NOTHING;
             LEFT JOIN piwik_log_action title_action ON lva.idaction_name = title_action.idaction
             LEFT JOIN piwik_log_action ref_action ON lva.idaction_url_ref = ref_action.idaction
             LEFT JOIN piwik_log_visit v ON lva.idvisit = v.idvisit
-            WHERE {where_sql}
+            WHERE {where.sql}
               AND lva.idaction_url IS NOT NULL
             ORDER BY lva.idlink_va
         """
 
-        self.cursor.execute(query, params)
+        self.cursor.execute(query, where.params)
 
         yield "-- Website Events (from piwik_log_link_visit_action)"
         yield "-- Maps to Umami website_event table"
@@ -591,12 +681,17 @@ ON CONFLICT (event_id) DO NOTHING;
         self,
         start_date: datetime | None = None,
         end_date: datetime | None = None,
-        output_file: str = None,
-    ):
+        output_file: str | None = None,
+    ) -> None:
         """Generate complete migration SQL.
 
         Uses streaming output to minimize memory usage for large migrations.
         SQL is written directly to the output as it's generated.
+
+        Args:
+            start_date: Optional start date filter (inclusive)
+            end_date: Optional end date filter (exclusive)
+            output_file: Path to output file, or None for stdout
         """
         # Count totals for progress bar
         logger.info("Counting records to migrate...")
@@ -612,6 +707,7 @@ ON CONFLICT (event_id) DO NOTHING;
             return
 
         # Open output file if specified (with explicit buffering for large files)
+        out: TextIO
         if output_file:
             out = open(output_file, "w", buffering=1024 * 1024)  # 1MB buffer
             logger.info(f"Writing output to: {output_file}")
@@ -620,10 +716,10 @@ ON CONFLICT (event_id) DO NOTHING;
 
         batches_written = 0
 
-        def write(line):
+        def write(line: str) -> None:
             out.write(line + "\n")
 
-        def flush_periodically():
+        def flush_periodically() -> None:
             """Flush output periodically to ensure data is written."""
             nonlocal batches_written
             batches_written += 1
@@ -685,7 +781,7 @@ ON CONFLICT (event_id) DO NOTHING;
                 out.close()
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(description="Migrate Matomo data to Umami SQL")
     parser.add_argument("--mysql-host", default="localhost", help="MySQL host")
     parser.add_argument("--mysql-port", type=int, default=3306, help="MySQL port")
