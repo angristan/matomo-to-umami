@@ -227,6 +227,9 @@ def parse_referrer_url(
 
     parsed = urlparse(referer_url)
     domain = parsed.netloc or None
+    # Strip www. prefix to match Umami's normalization
+    if domain and domain.startswith("www."):
+        domain = domain[4:]
     path = parsed.path or "/"
     query = parsed.query or None
 

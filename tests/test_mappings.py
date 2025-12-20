@@ -70,7 +70,7 @@ class TestParseReferrerUrl:
         hostname, path, query = parse_referrer_url(
             "https://www.google.com/search?q=test"
         )
-        assert hostname == "www.google.com"
+        assert hostname == "google.com"  # www. stripped to match Umami
         assert path == "/search"
         assert query == "q=test"
 
