@@ -119,66 +119,80 @@ BROWSER_MAPPING: Final[dict[str, str]] = {
 
 # Matomo OS codes to Umami OS names
 # Reference: https://github.com/matomo-org/device-detector
-# Umami has icons for: windows, mac-os, linux, chrome-os, android, ios,
-# blackberry-os, windows-mobile, open-bsd, unknown
+# Umami uses detect-browser which returns values like "Windows 10", "Android OS", etc.
+# These get converted to image paths: "Windows 10" -> windows-10.png
 OS_MAPPING: Final[dict[str, str]] = {
-    # Desktop OS
-    "WIN": "windows",
-    "WI7": "windows",  # Windows 7
-    "W81": "windows",  # Windows 8.1
-    "W10": "windows",  # Windows 10
-    "WI1": "windows",  # Windows 11
-    "MAC": "mac-os",
-    "LIN": "linux",
-    "COS": "chrome-os",
+    # Desktop OS - Windows variants
+    "WIN": "Windows 10",
+    "WI7": "Windows 7",
+    "W81": "Windows 8.1",
+    "W10": "Windows 10",
+    "WI1": "Windows 10",  # Windows 11 uses Windows 10 icon
+    "WXP": "Windows XP",
+    "WVI": "Windows Vista",
+    "WME": "Windows ME",
+    "W98": "Windows 98",
+    "W95": "Windows 95",
+    "W2K": "Windows 2000",
+    "W31": "Windows 3.11",
+    "WS3": "Windows Server 2003",
+    # Other desktop OS
+    "MAC": "Mac OS",
+    "LIN": "Linux",
+    "COS": "Chrome OS",
     # Mobile OS
-    "AND": "android",
-    "IOS": "ios",
-    "IPA": "ios",  # iPad
-    "IPH": "ios",  # iPhone
-    "WPH": "windows-mobile",
-    "WMO": "windows-mobile",
-    "WRT": "windows-mobile",  # Windows RT
-    "BLB": "blackberry-os",
-    "SYM": "linux",  # Symbian - no icon, use unknown
-    "WEB": "linux",  # webOS - no icon
-    "KAI": "linux",  # KaiOS - no icon
-    "HAR": "android",  # HarmonyOS - closest is Android
-    "FUC": "linux",  # Fuchsia - no icon
-    "FOS": "linux",  # Firefox OS
-    # Linux distributions (all map to linux)
-    "UBT": "linux",  # Ubuntu
-    "FED": "linux",  # Fedora
-    "DEB": "linux",  # Debian
-    "MIN": "linux",  # Mint
-    "ARC": "linux",  # Arch
-    "CEN": "linux",  # CentOS
-    "RHL": "linux",  # Red Hat
-    "SUS": "linux",  # SUSE
-    "GEN": "linux",  # Gentoo
-    "MAN": "linux",  # Manjaro
-    "ELE": "linux",  # Elementary
-    "POP": "linux",  # Pop!_OS
+    "AND": "Android OS",
+    "IOS": "iOS",
+    "IPA": "iOS",  # iPad
+    "IPH": "iOS",  # iPhone
+    "WPH": "Windows Mobile",
+    "WMO": "Windows Mobile",
+    "WRT": "Windows Mobile",  # Windows RT
+    "WCE": "Windows CE",
+    "BLB": "BlackBerry OS",
+    "SYM": "Linux",  # Symbian - no icon
+    "WEB": "Linux",  # webOS - no icon
+    "KAI": "Linux",  # KaiOS - no icon
+    "HAR": "Android OS",  # HarmonyOS - closest is Android
+    "FUC": "Linux",  # Fuchsia - no icon
+    "FOS": "Linux",  # Firefox OS
+    # Linux distributions (all map to Linux)
+    "UBT": "Linux",  # Ubuntu
+    "FED": "Linux",  # Fedora
+    "DEB": "Linux",  # Debian
+    "MIN": "Linux",  # Mint
+    "ARC": "Linux",  # Arch
+    "CEN": "Linux",  # CentOS
+    "RHL": "Linux",  # Red Hat
+    "SUS": "Linux",  # SUSE
+    "GEN": "Linux",  # Gentoo
+    "MAN": "Linux",  # Manjaro
+    "ELE": "Linux",  # Elementary
+    "POP": "Linux",  # Pop!_OS
     # BSD variants
-    "BSD": "linux",  # Generic BSD
-    "FRE": "linux",  # FreeBSD
-    "OPE": "open-bsd",  # OpenBSD
-    "NET": "linux",  # NetBSD
+    "BSD": "Linux",  # Generic BSD
+    "FRE": "Linux",  # FreeBSD
+    "OPE": "Open BSD",  # OpenBSD
+    "NET": "Linux",  # NetBSD
     # Gaming consoles
-    "PS3": "unknown",  # PlayStation 3
-    "PS4": "unknown",  # PlayStation 4
-    "PS5": "unknown",  # PlayStation 5
-    "XB1": "unknown",  # Xbox One
-    "XBX": "unknown",  # Xbox
-    "WII": "unknown",  # Wii
-    "NDS": "unknown",  # Nintendo DS
+    "PS3": "Linux",  # PlayStation 3
+    "PS4": "Linux",  # PlayStation 4
+    "PS5": "Linux",  # PlayStation 5
+    "XB1": "Linux",  # Xbox One
+    "XBX": "Linux",  # Xbox
+    "WII": "Linux",  # Wii
+    "NDS": "Linux",  # Nintendo DS
     # Other
-    "AMZ": "android",  # Fire OS - based on Android
-    "TIZ": "linux",  # Tizen
-    "ROS": "linux",  # Robot OS
-    "HAI": "linux",  # Haiku
-    "OBS": "linux",  # Other BSD
-    "UNK": "unknown",
+    "AMZ": "Amazon OS",  # Fire OS
+    "TIZ": "Linux",  # Tizen
+    "ROS": "Linux",  # Robot OS
+    "HAI": "Linux",  # Haiku
+    "OBS": "Linux",  # Other BSD
+    "SOS": "Sun OS",
+    "QNX": "QNX",
+    "BEO": "BeOS",
+    "OS2": "OS/2",
+    "UNK": "Linux",  # Unknown defaults to Linux (shows icon)
 }
 
 
@@ -270,12 +284,12 @@ def map_browser(matomo_code: str | None) -> str | None:
 def map_os(matomo_code: str | None) -> str | None:
     """Map Matomo OS code to Umami OS name.
 
-    Only returns OS names that Umami recognizes (has icons for).
-    Unrecognized OS codes are mapped to "unknown".
+    Returns OS names matching detect-browser format (e.g., "Windows 10", "Android OS").
+    Unrecognized OS codes default to "Linux" (has icon).
     """
     if not matomo_code:
         return None
-    return OS_MAPPING.get(matomo_code, "unknown")
+    return OS_MAPPING.get(matomo_code, "Linux")
 
 
 def map_device_type(matomo_type: int | None) -> str | None:

@@ -119,22 +119,22 @@ class TestMapOs:
     """Tests for OS code mapping."""
 
     def test_windows(self):
-        assert map_os("WIN") == "windows"
+        assert map_os("WIN") == "Windows 10"
 
     def test_macos(self):
-        assert map_os("MAC") == "mac-os"
+        assert map_os("MAC") == "Mac OS"
 
     def test_linux(self):
-        assert map_os("LIN") == "linux"
+        assert map_os("LIN") == "Linux"
 
     def test_android(self):
-        assert map_os("AND") == "android"
+        assert map_os("AND") == "Android OS"
 
     def test_ios(self):
-        assert map_os("IOS") == "ios"
+        assert map_os("IOS") == "iOS"
 
-    def test_unknown_os_returns_unknown(self):
-        assert map_os("XXX") == "unknown"
+    def test_unknown_os_defaults_to_linux(self):
+        assert map_os("XXX") == "Linux"
 
     def test_none(self):
         assert map_os(None) is None
@@ -311,30 +311,31 @@ class TestExpandedBrowserMappings:
 
 
 class TestExpandedOSMappings:
-    """Tests for OS mappings to Umami-recognized OS names."""
+    """Tests for OS mappings to Umami detect-browser format."""
 
     def test_linux_distros_map_to_linux(self):
-        """Linux distributions all map to linux."""
-        assert map_os("UBT") == "linux"  # Ubuntu
-        assert map_os("FED") == "linux"  # Fedora
-        assert map_os("ARC") == "linux"  # Arch
-        assert map_os("POP") == "linux"  # Pop!_OS
+        """Linux distributions all map to Linux."""
+        assert map_os("UBT") == "Linux"  # Ubuntu
+        assert map_os("FED") == "Linux"  # Fedora
+        assert map_os("ARC") == "Linux"  # Arch
+        assert map_os("POP") == "Linux"  # Pop!_OS
 
     def test_bsd_variants(self):
         """BSD variants map appropriately."""
-        assert map_os("FRE") == "linux"  # FreeBSD
-        assert map_os("OPE") == "open-bsd"  # OpenBSD
+        assert map_os("FRE") == "Linux"  # FreeBSD
+        assert map_os("OPE") == "Open BSD"  # OpenBSD
 
     def test_harmonyos(self):
-        """HarmonyOS maps to android (closest match)."""
-        assert map_os("HAR") == "android"
+        """HarmonyOS maps to Android OS (closest match)."""
+        assert map_os("HAR") == "Android OS"
 
     def test_windows_variants(self):
-        """Windows versions all map to windows."""
-        assert map_os("WI7") == "windows"  # Windows 7
-        assert map_os("W81") == "windows"  # Windows 8.1
+        """Windows versions map to specific versions."""
+        assert map_os("WI7") == "Windows 7"
+        assert map_os("W81") == "Windows 8.1"
+        assert map_os("W10") == "Windows 10"
 
     def test_ios_variants(self):
-        """iOS device types all map to ios."""
-        assert map_os("IPA") == "ios"  # iPad
-        assert map_os("IPH") == "ios"  # iPhone
+        """iOS device types all map to iOS."""
+        assert map_os("IPA") == "iOS"  # iPad
+        assert map_os("IPH") == "iOS"  # iPhone
