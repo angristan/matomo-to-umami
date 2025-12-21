@@ -332,6 +332,17 @@ Expected format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
 
 **Missing referrers**: If action-level referrer is NULL, the tool falls back to visit-level referrer. Some pageviews may still have no referrer data.
 
+## Development
+
+After cloning, install pre-commit hooks:
+
+```bash
+uv sync
+pre-commit install
+```
+
+This enables automatic linting and formatting with [ruff](https://github.com/astral-sh/ruff) on each commit.
+
 ## License
 
 MIT License - see LICENSE file for details.

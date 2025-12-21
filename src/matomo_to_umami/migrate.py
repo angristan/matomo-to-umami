@@ -1,5 +1,7 @@
 """Migration script to convert Matomo data to Umami SQL."""
 
+from __future__ import annotations
+
 import argparse
 import logging
 import re
@@ -52,6 +54,7 @@ class WhereClause:
             sql=f"{self.sql} AND {condition}",
             params=(*self.params, param),
         )
+
 
 console = Console(stderr=True)
 logger = logging.getLogger(__name__)
@@ -534,7 +537,9 @@ class MatomoToUmamiMigrator:
             device = truncate_field(map_device_type(row["config_device_type"]), 20)
             screen = truncate_field(row["config_resolution"], 11)
             language = truncate_field(row["location_browser_lang"], 35)
-            country = row["location_country"][:2].upper() if row["location_country"] else None
+            country = (
+                row["location_country"][:2].upper() if row["location_country"] else None
+            )
             # Region should be in {country}-{region} format for Umami
             # Convert FIPS region codes to ISO 3166-2
             raw_region = row["location_region"]
