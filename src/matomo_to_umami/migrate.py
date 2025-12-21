@@ -160,14 +160,17 @@ def escape_sql_string(value: str | None, max_length: int | None = None) -> str:
 
     If max_length is provided, truncates BEFORE escaping to ensure
     the final unescaped value fits in the database column.
+
+    Note: PostgreSQL with standard_conforming_strings=on (default) treats
+    backslashes as literal characters, so we only escape single quotes.
     """
     if value is None:
         return "NULL"
     # Truncate before escaping if max_length specified
     if max_length is not None and len(value) > max_length:
         value = value[:max_length]
-    # Escape single quotes and backslashes
-    escaped = value.replace("\\", "\\\\").replace("'", "''")
+    # Only escape single quotes (backslashes are literal in standard SQL)
+    escaped = value.replace("'", "''")
     return f"'{escaped}'"
 
 
