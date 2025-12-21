@@ -15,6 +15,7 @@ from matomo_to_umami.migrate import (
     SiteMappingError,
     validate_site_mapping,
 )
+from matomo_to_umami.region_mappings import convert_region_to_iso
 
 
 class TestParseMatmoUrl:
@@ -339,3 +340,57 @@ class TestExpandedOSMappings:
         """iOS device types all map to iOS."""
         assert map_os("IPA") == "iOS"  # iPad
         assert map_os("IPH") == "iOS"  # iPhone
+
+
+class TestRegionMapping:
+    """Tests for FIPS to ISO 3166-2 region code conversion."""
+
+    def test_france_ile_de_france(self):
+        """French FIPS A8 converts to ISO IDF (Île-de-France)."""
+        assert convert_region_to_iso("FR", "A8") == "IDF"
+
+    def test_france_rhone_alpes(self):
+        """French FIPS B9 converts to merged region ARA."""
+        assert convert_region_to_iso("FR", "B9") == "ARA"
+
+    def test_germany_berlin(self):
+        """German FIPS 16 converts to ISO BE (Berlin)."""
+        assert convert_region_to_iso("DE", "16") == "BE"
+
+    def test_china_guangdong(self):
+        """Chinese FIPS 30 converts to ISO GD (Guangdong)."""
+        assert convert_region_to_iso("CN", "30") == "GD"
+
+    def test_spain_madrid(self):
+        """Spanish FIPS 63 converts to ISO MD (Madrid)."""
+        assert convert_region_to_iso("ES", "63") == "MD"
+
+    def test_italy_lazio(self):
+        """Italian FIPS 07 converts to ISO 62 (Lazio)."""
+        assert convert_region_to_iso("IT", "07") == "62"
+
+    def test_unknown_country_returns_original(self):
+        """Unknown country returns original region code."""
+        assert convert_region_to_iso("XX", "99") == "99"
+
+    def test_unknown_region_returns_original(self):
+        """Unknown region code for known country returns original."""
+        assert convert_region_to_iso("FR", "ZZ") == "ZZ"
+
+    def test_us_regions_pass_through(self):
+        """US regions (already ISO) pass through unchanged."""
+        # US uses ISO codes in Matomo, so not in our mapping
+        assert convert_region_to_iso("US", "CA") == "CA"
+        assert convert_region_to_iso("US", "NY") == "NY"
+
+    def test_switzerland_zurich(self):
+        """Swiss FIPS 26 converts to ISO ZH (Zürich)."""
+        assert convert_region_to_iso("CH", "26") == "ZH"
+
+    def test_netherlands_noord_holland(self):
+        """Dutch FIPS 09 converts to ISO NH (Noord-Holland)."""
+        assert convert_region_to_iso("NL", "09") == "NH"
+
+    def test_belgium_brussels(self):
+        """Belgian FIPS 03 converts to ISO BRU (Brussels)."""
+        assert convert_region_to_iso("BE", "03") == "BRU"

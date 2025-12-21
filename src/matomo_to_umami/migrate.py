@@ -36,6 +36,7 @@ from .mappings import (
     parse_referrer_url,
     truncate_field,
 )
+from .region_mappings import convert_region_to_iso
 
 
 @dataclass(frozen=True)
@@ -535,12 +536,14 @@ class MatomoToUmamiMigrator:
             language = truncate_field(row["location_browser_lang"], 35)
             country = row["location_country"][:2].upper() if row["location_country"] else None
             # Region should be in {country}-{region} format for Umami
+            # Convert FIPS region codes to ISO 3166-2
             raw_region = row["location_region"]
             if raw_region and country:
-                if "-" not in raw_region:
-                    region = f"{country}-{raw_region}"
+                iso_region = convert_region_to_iso(country, raw_region)
+                if "-" not in iso_region:
+                    region = f"{country}-{iso_region}"
                 else:
-                    region = raw_region
+                    region = iso_region
             else:
                 region = None
             region = truncate_field(region, 20)
