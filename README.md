@@ -299,6 +299,14 @@ ON CONFLICT (event_id) DO NOTHING;
 COMMIT;
 ```
 
+## Important Notes
+
+### Bounce Rate Calculation
+
+Umami calculates bounce rate as the percentage of visits with only 1 event. The migration tool uses Matomo's `idvisit` to generate `visit_id`, which correctly groups all pageviews from the same visit together. This ensures accurate bounce rate statistics after migration.
+
+If you see 100% bounce rate after migration, verify that `visit_id` is being generated from `idvisit` (not `idpageview`).
+
 ## Limitations and Caveats
 
 1. **Limited event types**: Only pageviews, outlinks, and downloads are migrated. Custom Matomo events, goals, and e-commerce data are not supported.
