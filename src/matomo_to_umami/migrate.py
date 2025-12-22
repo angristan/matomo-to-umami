@@ -641,16 +641,9 @@ ON CONFLICT (session_id) DO NOTHING;
 
             event_id = generate_uuid_from_matomo_id(row["idlink_va"], "action")
             session_id = generate_uuid_from_matomo_id(row["idvisit"], "visit")
-            # Use pageview ID for visit_id if available, otherwise generate from action
-            if row["idpageview"]:
-                visit_id = generate_uuid_from_matomo_id(
-                    int.from_bytes(row["idpageview"].encode()[:8], "big")
-                    if isinstance(row["idpageview"], str)
-                    else row["idpageview"],
-                    "pageview",
-                )
-            else:
-                visit_id = generate_uuid_from_matomo_id(row["idlink_va"], "pageview")
+            # Use idvisit for visit_id to group all events from the same visit together
+            # This ensures correct bounce rate calculation (bounce = visit with only 1 event)
+            visit_id = generate_uuid_from_matomo_id(row["idvisit"], "visit")
 
             # Parse URL
             if row["url_name"]:
