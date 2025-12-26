@@ -13,38 +13,38 @@ This migration tool:
 
 ## What's Covered
 
-| Feature              | Status                                    |
-| -------------------- | ----------------------------------------- |
-| Session/visitor data | Covered                                   |
-| Pageview events      | Covered                                   |
-| Outlink clicks       | Covered (as custom event `outlink`)       |
-| Download clicks      | Covered (as custom event `download`)      |
-| Browser detection    | Covered (with code mapping)               |
-| OS detection         | Covered (with code mapping)               |
-| Device type          | Covered (desktop/mobile/tablet)           |
-| Screen resolution    | Covered                                   |
-| Language             | Covered                                   |
-| Country/Region/City  | Covered                                   |
-| Page URLs            | Covered                                   |
-| Page titles          | Covered                                   |
-| Referrer URLs        | Covered (with fallback logic)             |
-| Multi-site support   | Covered                                   |
-| Date range filtering | Covered                                   |
-| Batch processing     | Covered                                   |
-| Progress bar         | Covered                                   |
-| Dry run preview      | Covered                                   |
-| Verbose logging      | Covered                                   |
+| Feature              | Status                               |
+| -------------------- | ------------------------------------ |
+| Session/visitor data | Covered                              |
+| Pageview events      | Covered                              |
+| Outlink clicks       | Covered (as custom event `outlink`)  |
+| Download clicks      | Covered (as custom event `download`) |
+| Browser detection    | Covered (with code mapping)          |
+| OS detection         | Covered (with code mapping)          |
+| Device type          | Covered (desktop/mobile/tablet)      |
+| Screen resolution    | Covered                              |
+| Language             | Covered                              |
+| Country/Region/City  | Covered                              |
+| Page URLs            | Covered                              |
+| Page titles          | Covered                              |
+| Referrer URLs        | Covered (with fallback logic)        |
+| Multi-site support   | Covered                              |
+| Date range filtering | Covered                              |
+| Batch processing     | Covered                              |
+| Progress bar         | Covered                              |
+| Dry run preview      | Covered                              |
+| Verbose logging      | Covered                              |
 
 ## What's NOT Covered
 
-| Feature                | Reason                                                |
-| ---------------------- | ----------------------------------------------------- |
-| Custom Matomo events   | Only pageviews, outlinks, and downloads are migrated  |
-| E-commerce/Goals       | Umami has different tracking model                    |
-| Site search data       | Not mapped                                            |
-| Conversion tracking    | Different architecture                                |
-| Real-time data         | Only historical batch migration                       |
-| User accounts/segments | Not applicable                                        |
+| Feature                | Reason                                               |
+| ---------------------- | ---------------------------------------------------- |
+| Custom Matomo events   | Only pageviews, outlinks, and downloads are migrated |
+| E-commerce/Goals       | Umami has different tracking model                   |
+| Site search data       | Not mapped                                           |
+| Conversion tracking    | Different architecture                               |
+| Real-time data         | Only historical batch migration                      |
+| User accounts/segments | Not applicable                                       |
 
 ## How It Works
 
@@ -307,39 +307,6 @@ Umami calculates bounce rate as the percentage of visits with only 1 event. The 
 
 If you see 100% bounce rate after migration, verify that `visit_id` is being generated from `idvisit` (not `idpageview`).
 
-## Limitations and Caveats
-
-1. **Limited event types**: Only pageviews, outlinks, and downloads are migrated. Custom Matomo events, goals, and e-commerce data are not supported.
-2. **Historical data**: This is a one-time batch migration, not continuous sync
-3. **Tracking differences**: Matomo and Umami count sessions differently, so numbers won't match exactly
-4. **No rollback**: The tool generates SQL; there's no built-in rollback mechanism
-5. **Large datasets**: For very large Matomo instances, you may need to migrate in date range chunks
-
-## Troubleshooting
-
-**Connection errors**: The tool provides user-friendly error messages for common database issues:
-
-- Access denied: Check your MySQL username and password
-- Cannot connect: Verify the server is running and accessible
-- Unknown database: Check your database name
-
-Use `-v` or `-vv` for more detailed logging when debugging connection issues.
-
-**Invalid site mapping**: The tool validates site mappings and provides helpful error messages:
-
-```text
-Error: Invalid Umami UUID: 'not-a-uuid'
-Expected format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
-```
-
-**"Unknown browser code"**: The migration maps unknown codes to the original value. Check if it's a newer browser not in the mapping.
-
-**Duplicate key errors**: The SQL uses `ON CONFLICT DO NOTHING`, so duplicates are safely ignored. This is expected on re-runs.
-
-**Memory issues**: Reduce `--batch-size` for large migrations, or split by date ranges.
-
-**Missing referrers**: If action-level referrer is NULL, the tool falls back to visit-level referrer. Some pageviews may still have no referrer data.
-
 ## Development
 
 After cloning, install pre-commit hooks:
@@ -350,7 +317,3 @@ pre-commit install
 ```
 
 This enables automatic linting and formatting with [ruff](https://github.com/astral-sh/ruff) on each commit.
-
-## License
-
-MIT License - see LICENSE file for details.
