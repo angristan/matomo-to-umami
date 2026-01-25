@@ -163,7 +163,7 @@ docker exec -i umami-postgres psql -U app -d app \
 #### 4. Generate the migration SQL
 
 ```bash
-migrate \
+uv run migrate \
   --mysql-host localhost \
   --mysql-port 3307 \
   --mysql-user root \
@@ -201,7 +201,7 @@ migrate \
 Before generating the full migration, use `--dry-run` to see what would be migrated:
 
 ```bash
-migrate \
+uv run migrate \
   --mysql-host localhost \
   --mysql-port 3307 \
   --site-mapping "1:a5d41854-bde7-4416-819f-3923ea2b2706:example.com" \
