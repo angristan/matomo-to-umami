@@ -138,8 +138,10 @@ docker exec -i umami-postgres psql -U app -d app < dumps/umami.sql
 
 Map each Matomo site ID to its corresponding Umami website UUID:
 
+> **Note**: Matomo's table prefix depends on your installation. Older installations (from the Piwik era) use `piwik_`, while newer installations use `matomo_` by default. Check your database to confirm which prefix your tables use.
+
 ```bash
-# Get Matomo site IDs
+# Get Matomo site IDs (use matomo_site if your installation uses the matomo_ prefix)
 docker exec -i matomo-mariadb mariadb -u root -ppassword matomo \
   -e "SELECT idsite, name, main_url FROM piwik_site"
 
