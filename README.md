@@ -130,7 +130,7 @@ mysqldump -h your-matomo-host -u user -p matomo > dumps/matomo.sql
 pg_dump -h your-umami-host -U user umami > dumps/umami.sql
 
 # Load into local containers
-docker exec -i matomo-mariadb mysql -u root -ppassword matomo < dumps/matomo.sql
+docker exec -i matomo-mariadb mariadb -u root -ppassword matomo < dumps/matomo.sql
 docker exec -i umami-postgres psql -U app -d app < dumps/umami.sql
 ```
 
@@ -140,7 +140,7 @@ Map each Matomo site ID to its corresponding Umami website UUID:
 
 ```bash
 # Get Matomo site IDs
-docker exec -i matomo-mariadb mysql -u root -ppassword matomo \
+docker exec -i matomo-mariadb mariadb -u root -ppassword matomo \
   -e "SELECT idsite, name, main_url FROM piwik_site"
 
 # +--------+------------------+-------------------------+
